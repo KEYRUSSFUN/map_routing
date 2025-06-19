@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <title>{% block title %} {% endblock %}</title>
+</head>
+<body>
+    <div>
+        <header>
+            <img class = "header__img" src="{{url_for('static', filename = 'images/imit.png')}}" alt="ИМИТ">
+            <div class="links">
+              <a href="{{url_for('index')}}">Заказать справку</a>
+              <a href="{{url_for('about')}}">Гид по корпусу</a>
+            </div>
+            <div style="width: 100px;"></div>
+          </header>
+          {% block body %} {% endblock %}
+    </div>
+
+</body>
+</html>
