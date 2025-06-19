@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx creator="Тропинки.ру - https://ttrails.ru" version="1.1" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>Тропинки.ру - Маршрут1</name>
+    <desc>Хайкинг</desc>
+    <author>
+      <name>Нацу Драгнил</name>
+      <link href="https://ttrails.ru/users/nacu_dragnil">
+        <text>Профиль пользователя Нацу Драгнил. Смотрите на Тропинки.ру</text>
+      </link>
+    </author>
+    <link href="https://ttrails.ru/routes/marshrut1-4">
+      <text>Маршрут1. Смотрите на Тропинки.ру</text>
+    </link>
+    <time>2024-12-05T00:00:00.000Z</time>
+  </metadata>
+  <trk>
+    <name>Тропинки.ру - Маршрут1</name>
+    <desc>Хайкинг</desc>
+    <trkseg>
+      <trkpt lat="53.348563765824906" lon="83.77615010079501">
+        <ele>188</ele>
+      </trkpt>
+      <trkpt lat="53.34854" lon="83.7762">
+        <ele>188</ele>
+      </trkpt>
+      <trkpt lat="53.34861" lon="83.77639">
+        <ele>188</ele>
+      </trkpt>
+      <trkpt lat="53.34885" lon="83.77614">
+        <ele>188</ele>
+      </trkpt>
+      <trkpt lat="53.34891" lon="83.7763">
+        <ele>188</ele>
+      </trkpt>
+      <trkpt lat="53.35441" lon="83.77038">
+        <ele>192</ele>
+      </trkpt>
+      <trkpt lat="53.35428" lon="83.77005">
+        <ele>192</ele>
+      </trkpt>
+      <trkpt lat="53.35444" lon="83.76988">
+        <ele>192</ele>
+      </trkpt>
+      <trkpt lat="53.35444" lon="83.76988">
+        <ele>192</ele>
+      </trkpt>
+      <trkpt lat="53.35472" lon="83.76958">
+        <ele>192</ele>
+      </trkpt>
+      <trkpt lat="53.35466" lon="83.76958">
+        <ele>192</ele>
+      </trkpt>
+      <trkpt lat="53.35456" lon="83.76949">
+        <ele>192</ele>
+      </trkpt>
+      <trkpt lat="53.35349" lon="83.76728">
+        <ele>191</ele>
+      </trkpt>
+      <trkpt lat="53.35349" lon="83.76728">
+        <ele>191</ele>
+      </trkpt>
+      <trkpt lat="53.35224" lon="83.76467">
+        <ele>188</ele>
+      </trkpt>
+      <trkpt lat="53.35212" lon="83.76484">
+        <ele>188</ele>
+      </trkpt>
+      <trkpt lat="53.3514" lon="83.76341">
+        <ele>189</ele>
+      </trkpt>
+      <trkpt lat="53.3512" lon="83.76321">
+        <ele>189</ele>
+      </trkpt>
+      <trkpt lat="53.35026" lon="83.76256">
+        <ele>189</ele>
+      </trkpt>
+      <trkpt lat="53.35026" lon="83.76256">
+        <ele>189</ele>
+      </trkpt>
+      <trkpt lat="53.3499" lon="83.76231">
+        <ele>186</ele>
+      </trkpt>
+      <trkpt lat="53.3498" lon="83.76268">
+        <ele>190</ele>
+      </trkpt>
+      <trkpt lat="53.3498" lon="83.76268">
+        <ele>190</ele>
+      </trkpt>
+      <trkpt lat="53.3484" lon="83.76782">
+        <ele>191</ele>
+      </trkpt>
+      <trkpt lat="53.3484" lon="83.76782">
+        <ele>191</ele>
+      </trkpt>
+      <trkpt lat="53.34743" lon="83.77137">
+        <ele>191</ele>
+      </trkpt>
+      <trkpt lat="53.34738" lon="83.77152">
+        <ele>191</ele>
+      </trkpt>
+      <trkpt lat="53.34726" lon="83.77168">
+        <ele>191</ele>
+      </trkpt>
+      <trkpt lat="53.34726" lon="83.77168">
+        <ele>191</ele>
+      </trkpt>
+      <trkpt lat="53.3472" lon="83.77175">
+        <ele>191</ele>
+      </trkpt>
+      <trkpt lat="53.34727" lon="83.77193">
+        <ele>191</ele>
+      </trkpt>
+      <trkpt lat="53.34712" lon="83.77208">
+        <ele>191</ele>
+      </trkpt>
+      <trkpt lat="53.34712" lon="83.77208">
+        <ele>191</ele>
+      </trkpt>
+      <trkpt lat="53.3486" lon="83.77595">
+        <ele>188</ele>
+      </trkpt>
+      <trkpt lat="53.34848" lon="83.77607">
+        <ele>188</ele>
+      </trkpt>
+      <trkpt lat="53.34854" lon="83.7762">
+        <ele>188</ele>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>
