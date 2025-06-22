@@ -51,6 +51,9 @@ dependencies:
   shared_preferences: ^2.5.3
   fl_chart: ^0.63.0
   flutter_compass: ^0.8.0
+  socket_io_client: ^2.0.0
+  path: any
+  http_parser: ^4.1.2
 
 dev_dependencies:
   flutter_test:

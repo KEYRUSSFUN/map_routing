@@ -7,14 +7,14 @@ class CreateChatDialog extends StatefulWidget {
   final List<Friend> friends;
   final GroupChatService chatService;
   final void Function(Chat newChat) onChatCreated;
-  final String currentUserId; // добавляем текущего пользователя
+  final String currentUserId;
 
   const CreateChatDialog({
     super.key,
     required this.friends,
     required this.chatService,
     required this.onChatCreated,
-    required this.currentUserId, // обязательно передаем при создании
+    required this.currentUserId,
   });
 
   @override
@@ -28,6 +28,7 @@ class _CreateChatDialogState extends State<CreateChatDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      backgroundColor: Colors.white,
       title: const Text("Создание нового чата"),
       content: SingleChildScrollView(
         child: Column(
@@ -42,22 +43,37 @@ class _CreateChatDialogState extends State<CreateChatDialog> {
                 style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             SizedBox(
-              height: 200,
+              height: 300,
               width: double.maxFinite,
               child: ListView.builder(
                 itemCount: widget.friends.length,
                 itemBuilder: (context, index) {
                   final friend = widget.friends[index];
-                  return CheckboxListTile(
-                    value: _selectedFriendIds.contains(friend.id),
-                    title: Text('ID: ${friend.id}'),
-                    subtitle: Text(friend.avatarUrl),
-                    onChanged: (selected) {
+                  final isSelected = _selectedFriendIds.contains(friend.id);
+
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundImage: NetworkImage(friend.avatarUrl),
+                    ),
+                    title: Text(friend.name),
+                    trailing: Checkbox(
+                      value: isSelected,
+                      onChanged: (selected) {
+                        setState(() {
+                          if (selected == true) {
+                            _selectedFriendIds.add(friend.id);
+                          } else {
+                            _selectedFriendIds.remove(friend.id);
+                          }
+                        });
+                      },
+                    ),
+                    onTap: () {
                       setState(() {
-                        if (selected == true) {
-                          _selectedFriendIds.add(friend.id);
-                        } else {
+                        if (isSelected) {
                           _selectedFriendIds.remove(friend.id);
+                        } else {
+                          _selectedFriendIds.add(friend.id);
                         }
                       });
                     },
@@ -83,13 +99,12 @@ class _CreateChatDialogState extends State<CreateChatDialog> {
               return;
             }
 
-            // Собираем список участников, включая текущего пользователя
             final participants = <String>{
               widget.currentUserId,
               ..._selectedFriendIds
             };
 
-            if (participants.isEmpty) {
+            if (participants.length < 2) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                     content: Text("Выберите хотя бы одного участника.")),

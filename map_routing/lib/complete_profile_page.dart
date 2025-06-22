@@ -106,7 +106,7 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
               TextFormField(
                 controller: _countryController,
                 decoration: const InputDecoration(labelText: 'Страна'),
-                keyboardType: TextInputType.number,
+                keyboardType: TextInputType.text,
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Введите страну' : null,
               ),

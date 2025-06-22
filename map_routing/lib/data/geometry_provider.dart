@@ -5,6 +5,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:xml/xml.dart';
 import 'package:yandex_maps_mapkit/mapkit.dart';
+import 'package:path/path.dart' as p;
+import 'package:http_parser/http_parser.dart';
+import 'package:http/http.dart' as http;
+import 'dart:core';
 
 class GeometryProvider {
   static const startPosition = CameraPosition(

@@ -25,21 +25,6 @@ class GroupChatService {
     }
   }
 
-  Future<void> sendMessage(String chatId, String message) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/group_chats/$chatId/messages'),
-      headers: {
-        'Authorization': token,
-        'Content-Type': 'application/json',
-      },
-      body: json.encode({'message': message}),
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception('Failed to send message');
-    }
-  }
-
   Future<Chat> createGroupChat(String title, List<String> memberIds) async {
     final response = await http.post(
       Uri.parse('$baseUrl/api/group_chats'),

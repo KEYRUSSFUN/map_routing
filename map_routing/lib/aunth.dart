@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:map_routing/complete_profile_page.dart';
-import 'usersData/requests.dart';
+import 'usersData/registration_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -41,8 +41,8 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = false);
 
     if (token != null) {
-      final checkResponse = await http.post(
-        Uri.parse('http://192.168.1.81:5000/login'),
+      final checkResponse = await http.get(
+        Uri.parse('http://192.168.1.81:5000/api/user_info/check'),
         headers: {'Authorization': token},
       );
 

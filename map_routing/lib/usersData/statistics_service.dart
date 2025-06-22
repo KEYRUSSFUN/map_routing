@@ -4,12 +4,12 @@ import 'package:http/http.dart' as http;
 
 class WeeklySummary {
   final double distanceKm;
-  final int activeTimeSec;
+  final int steps; // Changed from activeTimeSec to steps
   final double calories;
 
   WeeklySummary({
     required this.distanceKm,
-    required this.activeTimeSec,
+    required this.steps, // Changed from activeTimeSec to steps
     required this.calories,
   });
 }
@@ -57,7 +57,11 @@ class StatisticsService {
     // Создаем карту с ключом - дата, значениями по метрикам
     Map<String, Map<String, dynamic>> dayStats = {
       for (var day in last7Days)
-        day: {'distance': 0.0, 'active_time': 0, 'calories': 0.0}
+        day: {
+          'distance': 0.0,
+          'steps': 0,
+          'calories': 0.0
+        } // Changed from active_time to steps
     };
 
     for (var stat in stats) {
@@ -65,7 +69,8 @@ class StatisticsService {
       if (dayStats.containsKey(date)) {
         dayStats[date]!['distance'] =
             (stat['distance'] as num?)?.toDouble() ?? 0.0;
-        dayStats[date]!['active_time'] = (stat['active_time'] as int?) ?? 0;
+        dayStats[date]!['steps'] =
+            (stat['steps'] as int?) ?? 0; // Changed from active_time to steps
         dayStats[date]!['calories'] =
             (stat['calories'] as num?)?.toDouble() ?? 0.0;
       }
@@ -79,14 +84,16 @@ class StatisticsService {
 
     final distanceMeters = weeklyStats.fold<double>(
         0.0, (sum, day) => sum + (day['distance'] as double));
-    final activeTime = weeklyStats.fold<int>(
-        0, (sum, day) => sum + (day['active_time'] as int));
+    final steps = weeklyStats.fold<int>(
+        0,
+        (sum, day) =>
+            sum + (day['steps'] as int)); // Changed from active_time to steps
     final calories = weeklyStats.fold<double>(
         0.0, (sum, day) => sum + (day['calories'] as double));
 
     return WeeklySummary(
       distanceKm: distanceMeters / 1000.0,
-      activeTimeSec: activeTime,
+      steps: steps, // Changed from activeTimeSec to steps
       calories: calories,
     );
   }

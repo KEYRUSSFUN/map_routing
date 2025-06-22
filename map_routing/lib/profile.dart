@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-
 import 'package:map_routing/usersData/statistics_service.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:map_routing/edit_profile.dart';
 import 'package:map_routing/gpx_route_list_page.dart';
 import 'package:map_routing/usersData/user_service.dart';
+import 'package:map_routing/usersData/friend_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 
@@ -17,23 +18,26 @@ class ProfilePage extends StatefulWidget {
 
 class ProfilePageState extends State<ProfilePage> with RouteAware {
   late Future<List<double>> weeklyActivityDataFuture;
+  late Future<List<Map<String, dynamic>>> friendRequestsFuture;
 
   String name = '';
   String country = '';
   String userAvatarUrl = '';
 
   double? distance;
-  int? time;
+  int? steps; // Changed from time to steps
   double? calories;
 
   bool isLoading = true;
 
   final userService = UserService();
   final statisticsService = StatisticsService();
+  FriendService? friendService;
 
   void refreshData() {
     fetchUserInfo();
     fetchStatistics();
+    fetchFriendRequests();
   }
 
   void fetchStatistics() async {
@@ -47,9 +51,9 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
 
     setState(() {
       distance = summary.distanceKm;
-      time = summary.activeTimeSec;
+      steps = summary.steps; // Changed from time to steps
       calories = summary.calories;
-      weeklyActivityDataFuture = Future.value(distancePerDay); // 👈 здесь
+      weeklyActivityDataFuture = Future.value(distancePerDay);
     });
   }
 
@@ -74,12 +78,76 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
     });
   }
 
+  void fetchFriendRequests() async {
+    if (friendService == null) return;
+    try {
+      final requests = await friendService!.fetchFriendRequests();
+      setState(() {
+        friendRequestsFuture = Future.value(requests);
+      });
+    } catch (e) {
+      print('Error fetching friend requests: $e');
+      setState(() {
+        friendRequestsFuture = Future.value([]);
+      });
+    }
+  }
+
+  Future<void> acceptFriendRequest(String requestId) async {
+    if (friendService == null) return;
+    try {
+      await friendService!.acceptFriendRequest(requestId);
+      fetchFriendRequests();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Запрос принят')),
+      );
+    } catch (e) {
+      print('Error accepting friend request: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка: $e')),
+      );
+    }
+  }
+
+  Future<void> rejectFriendRequest(String requestId) async {
+    if (friendService == null) return;
+    try {
+      await friendService!.rejectFriendRequest(requestId);
+      fetchFriendRequests();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Запрос отклонён')),
+      );
+    } catch (e) {
+      print('Error rejecting friend request: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка: $e')),
+      );
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     weeklyActivityDataFuture = Future.value([]);
-    fetchUserInfo();
-    fetchStatistics();
+    friendRequestsFuture = Future.value([]);
+    _initializeFriendService().then((_) {
+      fetchUserInfo();
+      fetchStatistics();
+      fetchFriendRequests();
+    });
+  }
+
+  Future<void> _initializeFriendService() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('jwt_token');
+    if (token == null || token.isEmpty) {
+      print('No token found in SharedPreferences');
+      return;
+    }
+    setState(() {
+      friendService =
+          FriendService(baseUrl: 'http://192.168.1.81:5000', token: token);
+    });
   }
 
   @override
@@ -101,6 +169,7 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
   void didPopNext() {
     fetchStatistics();
     fetchUserInfo();
+    fetchFriendRequests();
   }
 
   @override
@@ -150,7 +219,7 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
                               child: CircleAvatar(
                                 radius: 40,
                                 backgroundImage: userAvatarUrl != null &&
-                                        userAvatarUrl!.isNotEmpty
+                                        userAvatarUrl.isNotEmpty
                                     ? NetworkImage(userAvatarUrl)
                                     : const AssetImage(
                                             'assets/images/profile.png')
@@ -211,10 +280,10 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
                                     ? "${distance!.toStringAsFixed(1)} км"
                                     : "-- км"),
                             _buildWeeklyStat(
-                                "Время",
-                                time != null
-                                    ? "${(time! ~/ 3600)} ч ${(time! % 3600) ~/ 60} м"
-                                    : "-- ч"),
+                                "Шаги", // Changed from "Время" to "Шаги"
+                                steps != null
+                                    ? "$steps шагов" // Display steps as integer
+                                    : "-- шагов"),
                             _buildWeeklyStat(
                                 "Калории",
                                 calories != null
@@ -243,32 +312,67 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ListTile(
-                          leading: const Icon(Icons.watch),
-                          title: const Text("Физическая активность"),
-                          trailing:
-                              const Icon(Icons.arrow_forward_ios, size: 16),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (context) => const ActivityPage()),
+                        const Text(
+                          "Запросы на дружбу",
+                          style: TextStyle(
+                              fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        FutureBuilder<List<Map<String, dynamic>>>(
+                          future: friendRequestsFuture,
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const Center(
+                                  child: CircularProgressIndicator());
+                            }
+                            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                              return const Text("Нет новых запросов");
+                            }
+                            final requests = snapshot.data!;
+                            return ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: requests.length,
+                              itemBuilder: (context, index) {
+                                final request = requests[index];
+                                print(request);
+                                return ListTile(
+                                  leading: const Icon(Icons.person_add),
+                                  title: Text(request['fromUserName'] ??
+                                      'Неизвестный пользователь'),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.check,
+                                            color: Colors.green),
+                                        onPressed: () => acceptFriendRequest(
+                                            request['fromUserId']),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.close,
+                                            color: Color.fromARGB(
+                                                255, 252, 252, 252)),
+                                        onPressed: () => rejectFriendRequest(
+                                            request['fromUserId']),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
                             );
                           },
                         ),
-                        ListTile(
-                          leading: const Icon(Icons.auto_graph),
-                          title: const Text("Статистика"),
-                          trailing:
-                              const Icon(Icons.arrow_forward_ios, size: 16),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (context) => const StatisticPage()),
-                            );
-                          },
-                        ),
+                      ],
+                    ),
+                  ),
+                  Divider(thickness: 10, color: Colors.grey[200]),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         ListTile(
                           leading: const Icon(Icons.route),
                           title: const Text("Маршруты"),
@@ -280,19 +384,6 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
                               MaterialPageRoute(
                                   builder: (context) =>
                                       const GpxRouteListPage()),
-                            );
-                          },
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.watch_later),
-                          title: const Text("Рекорды"),
-                          trailing:
-                              const Icon(Icons.arrow_forward_ios, size: 16),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (context) => const RecordsPage()),
                             );
                           },
                         ),
@@ -374,7 +465,7 @@ class _WeeklyActivityChartState extends State<WeeklyActivityChart> {
         final weeklyData = snapshot.data!;
         return LineChart(
           LineChartData(
-            backgroundColor: const Color.fromARGB(255, 226, 5, 5),
+            backgroundColor: Colors.white, // Fixed background color to white
             minY: 0,
             maxY: _getMaxY(weeklyData),
             titlesData: FlTitlesData(
@@ -419,42 +510,6 @@ class _WeeklyActivityChartState extends State<WeeklyActivityChart> {
           ),
         );
       },
-    );
-  }
-}
-
-class ActivityPage extends StatelessWidget {
-  const ActivityPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Физическая активность")),
-      body: const Center(child: Text("Список тренировок")),
-    );
-  }
-}
-
-class StatisticPage extends StatelessWidget {
-  const StatisticPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Статистика")),
-      body: const Center(child: Text("Статистика")),
-    );
-  }
-}
-
-class RecordsPage extends StatelessWidget {
-  const RecordsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Рекорды")),
-      body: const Center(child: Text("Рекорды")),
     );
   }
 }

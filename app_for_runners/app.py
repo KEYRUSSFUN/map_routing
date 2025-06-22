@@ -1,47 +1,66 @@
+import socket
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+import flask_socketio
 from flask_sqlalchemy import SQLAlchemy
-from geoalchemy2 import Geometry
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user
 from werkzeug.security import check_password_hash, generate_password_hash # для хэширования паролей
 from datetime import datetime, timedelta
 from flask_cors import CORS
 from functools import wraps
+from sqlalchemy.exc import IntegrityError
 import jwt
+from flask_migrate import Migrate
+import eventlet
 
 app=Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///kurs.db'
 db=SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 CORS(app)
 #Для сессий:
 app.config['SECRET_KEY']='2d75155246883f023ee10d89cfae0663e3515f9a'
 
-
-class Geolocation(db.Model):
-    __tablename__ = 'geolocation'  # Указываем имя таблицы, если это не 'geolocation'
-    id_Geolocation = db.Column(db.Integer, primary_key=True)
-    id_User = db.Column(db.Integer, db.ForeignKey('user_info.id_User'))  # Добавляем внешний ключ на UserInfo
-    point1 = db.Column(Geometry(geometry_type='POINT', srid=4326))
-    point2 = db.Column(Geometry(geometry_type='POINT', srid=4326))
-    distance = db.Column(db.Float, nullable=False)
-
-    # Связь с UserInfo
-    user_info = db.relationship("UserInfo", back_populates="geolocations")
 # Таблица зарегистрированных пользователей
 class User(db.Model, UserMixin):
-
-    __tablename__ = 'users'  # Указываем имя таблицы, если это не 'user'
+    __tablename__ = 'users'
     id_User = db.Column(db.Integer, primary_key=True)
     password = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(100), nullable=False)
 
-    # Связь с UserInfo
     user_info = db.relationship("UserInfo", back_populates="user", uselist=False)
-    group_chats = db.relationship('GroupChat', 
-                                  secondary='user_group_chat', 
-                                  backref='members')
+    group_chats = db.relationship('GroupChat', secondary='user_group_chat', back_populates="members")
+    friendships = db.relationship(
+        'Friendship',
+        foreign_keys='Friendship.user_id',
+        backref=db.backref('user', lazy='joined'),
+        lazy='dynamic'
+    )
+    friend_of = db.relationship(
+        'Friendship',
+        foreign_keys='Friendship.friend_id',
+        backref=db.backref('friend', lazy='joined'),
+        lazy='dynamic'
+    )
+
+    def get_friends(self):
+        # Возвращает список подтверждённых друзей
+        accepted_friendships = self.friendships.filter_by(status='accepted').all()
+        return [friendship.friend for friendship in accepted_friendships]
+
     def get_id(self):
-        return str(self.id_User)
+        return int(self.id_User)
+
+class Friendship(db.Model):
+    __tablename__ = 'friendships'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)  # Добавляем уникальный id
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id_User'))
+    friend_id = db.Column(db.Integer, db.ForeignKey('users.id_User'))
+    status = db.Column(db.String(20), default='pending')  # 'pending', 'accepted', 'rejected'
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<Friendship {self.id}: {self.user_id} - {self.friend_id}>'
 
 # Таблица дополнительной информации о пользователях
 class UserInfo(db.Model):
@@ -55,17 +74,12 @@ class UserInfo(db.Model):
     Country = db.Column(db.String(30), nullable=False)
     # Связь с User
     user = db.relationship("User", back_populates="user_info")
-    # Связь с Geolocation
-    geolocations = db.relationship("Geolocation", back_populates="user_info")
 
 class UserGroupChatAssociation(db.Model):
     __tablename__ = 'user_group_chat'
     user_id = db.Column(db.Integer, db.ForeignKey('users.id_User'), primary_key=True)
     chat_id = db.Column(db.Integer, db.ForeignKey('group_chat.id'), primary_key=True)
     joined_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    user = db.relationship("User", backref="group_chats_association")
-    chat = db.relationship("GroupChat", backref="members_association")
 
 class UserStatistic(db.Model):
     __tablename__ = 'user_statistic'
@@ -84,6 +98,7 @@ class GroupChat(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(255), nullable=False)
 
+    members = db.relationship('User', secondary='user_group_chat', back_populates="group_chats")
     messages = db.relationship('GroupMessage', backref='chat', lazy='dynamic')
 
 class GroupMessage(db.Model):
@@ -95,6 +110,9 @@ class GroupMessage(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
     sender = db.relationship("User", backref="sent_messages")
+
+with app.app_context():
+    db.create_all() #debug=True лишает необходимость постоянно перезагружать сервер, то есть он сам обновляется
 
 # @app.route('/index')
 # @app.route('/')
@@ -117,9 +135,6 @@ def load_user(user_id):
 
 # Я ДОБАВИЛ (или поменял) C 80 ПО 132 СТРОЧКИ. В login_page возвращается token в json
 
-
-
-
 def generate_jwt(user_id):
         payload = {
             'user_id': user_id,
@@ -137,9 +152,6 @@ def verify_jwt(token):
     except jwt.InvalidTokenError:
         return None
     
-
-
-
 @app.route('/login', methods=['POST'])
 def login_page():
     if request.method == 'POST':
@@ -176,6 +188,219 @@ def token_required(f):
 
         return decorated_function
 
+# SocketIO initialization
+socketio = flask_socketio.SocketIO(app, cors_allowed_origins="*")
+
+@socketio.on('join_chat')
+def handle_join_chat(data):
+    print('>>> JOIN_CHAT EVENT TRIGGERED <<<')
+    print(f"Data: {data}")
+    auth_header = request.headers.get('Authorization')
+    token = data.get('token')
+    user_id = verify_jwt(token)
+    if not user_id:
+        return
+
+    chat_id = data.get('chat_id')
+    user = User.query.get(user_id)
+    chat = GroupChat.query.get(chat_id)
+    if not chat or not UserGroupChatAssociation.query.filter_by(user_id=user_id, chat_id=chat_id).first():
+        return
+
+    flask_socketio.join_room(chat_id)
+    flask_socketio.emit('joined', {'message': f'User {user.email} joined chat {chat_id}'}, room=chat_id)
+
+@socketio.on('send_message')
+def handle_send_message(data):
+    print('>>> SEND_MESSAGE EVENT TRIGGERED <<<')
+    print(f"Data: {data}")
+    auth_header = request.headers.get('Authorization')
+    token = data.get('token')
+    user_id = verify_jwt(token)
+    if not user_id:
+        return
+
+    chat_id = data.get('chat_id')
+    content = data.get('content')
+    if not content:
+        return
+
+    user = User.query.get(user_id)
+    chat = GroupChat.query.get(chat_id)
+    if not chat or not UserGroupChatAssociation.query.filter_by(user_id=user_id, chat_id=chat_id).first():
+        return
+
+    new_message = GroupMessage(chat_id=chat_id, sender_id=user_id, content=content)
+    db.session.add(new_message)
+    db.session.commit()
+
+    message_data = {
+        'id': new_message.id,
+        'sender': user.email,
+        'content': content,
+        'timestamp': new_message.timestamp.isoformat()
+    }
+    flask_socketio.emit('new_message', message_data, room=chat_id)
+
+
+@app.route('/api/friends', methods=['GET'])
+@token_required
+def get_friends(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    friends = user.get_friends()
+    friend_list = [{
+        'id': friend.id_User,
+        'email': friend.email,
+        'name': friend.user_info.name if friend.user_info else None
+    } for friend in friends]
+
+    return jsonify(friend_list), 200
+
+@app.route('/api/friends/requests', methods=['GET'])
+@token_required
+def get_friend_requests(user_id):
+    try:
+        # Ищем запросы, где текущий пользователь (user_id) является получателем (friend_id)
+        requests = Friendship.query.filter_by(friend_id=user_id, status='pending').all()
+        request_list = [
+            {
+                'id': req.id,  # Используем уникальный идентификатор запроса (если нужен)
+                'fromUserId': req.user_id,  # ID отправителя
+                'fromUserName': UserInfo.query.get(req.user_id).name if UserInfo.query.get(req.user_id) else 'Неизвестный пользователь'
+            } for req in requests
+        ]
+        return jsonify(request_list), 200
+    except Exception as e:
+        print(f"Error in get_friend_requests: {e}")
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
+
+@app.route('/api/friends/reject_request', methods=['POST'])
+@token_required
+def reject_friend_request(user_id):
+    try:
+        data = request.get_json()
+        request_id = data.get('request_id')
+        if not request_id:
+            return jsonify({'error': 'Request ID is required'}), 400
+
+        request = Friendship.query.get(request_id)
+        if not request or request.to_user_id != user_id or request.status != 'pending':
+            return jsonify({'error': 'Invalid request'}), 400
+
+        request.status = 'rejected'
+        db.session.commit()
+
+        return jsonify({'message': 'Friend request rejected'}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in reject_friend_request: {e}")
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
+
+@app.route('/api/user_info/<int:user_id>', methods=['GET'])
+@token_required
+def get_user_info_by_id(user_id):
+    # Проверяем, авторизован ли текущий пользователь
+    current_user_id = user_id
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    user_info = UserInfo.query.filter_by(id_User=user_id).first()
+    if not user_info:
+        return jsonify({'error': 'User info not found'}), 404
+
+    return jsonify({
+        "id": user_info.id_User,
+        "name": user_info.name,
+        "weight": user_info.weight,
+        "height": user_info.height,
+        "sex": user_info.sex,
+        "age": user_info.Age,
+        "country": user_info.Country,
+    }), 200
+
+@app.route('/api/users/search', methods=['GET'])
+@token_required
+def search_users(user_id):
+    try:
+        query = request.args.get('name', '')
+        print(f"Search query: {query}, user_id: {user_id}")  # Логирование запроса
+        if not query:
+            return jsonify({'error': 'Name query parameter is required'}), 400
+
+        # Используем безопасный запрос с учетом регистра и отладкой
+        users = UserInfo.query.filter(UserInfo.name.ilike(f'%{query}%')).all()
+        user_list = []
+        for user in users:
+            user_dict = {
+                'id': user.id_User,
+                'name': user.name
+            }
+            print(f"Found user: {user_dict}")  # Логирование найденных пользователей
+            user_list.append(user_dict)
+
+        if not user_list:
+            print(f"No users found for query: {query}")  # Дополнительное логирование
+        return jsonify(user_list), 200
+    except Exception as e:
+        print(f"Error in search_users: {e}")  # Логирование ошибки
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
+
+@app.route('/api/friends/send_request', methods=['POST'])
+@token_required
+def send_friend_request(user_id):
+    data = request.get_json()
+    friend_id = data.get('friend_id')
+
+    if not friend_id or not User.query.get(friend_id):
+        return jsonify({'error': 'Invalid friend ID'}), 400
+
+    if user_id == friend_id:
+        return jsonify({'error': 'Cannot send friend request to yourself'}), 400
+
+    # Проверяем, существует ли уже запрос
+    existing = Friendship.query.filter_by(user_id=user_id, friend_id=friend_id).first()
+    if existing:
+        return jsonify({'error': 'Friend request already sent'}), 400
+
+    # Проверяем обратную связь (чтобы избежать дубликатов)
+    reverse = Friendship.query.filter_by(user_id=friend_id, friend_id=user_id).first()
+    if reverse and reverse.status == 'accepted':
+        return jsonify({'error': 'Already friends'}), 400
+
+    new_friendship = Friendship(user_id=user_id, friend_id=friend_id, status='pending')
+    db.session.add(new_friendship)
+    db.session.commit()
+
+    return jsonify({'message': 'Friend request sent', 'friend_id': friend_id}), 201
+
+@app.route('/api/friends/accept_request', methods=['POST'])
+@token_required
+def accept_friend_request(user_id):
+    data = request.get_json()
+    friend_id = data.get('friend_id')
+    print(user_id)
+    print(friend_id)
+    if not friend_id or not User.query.get(friend_id):
+        return jsonify({'error': 'Invalid friend ID'}), 400
+
+    friendship = Friendship.query.filter_by(user_id=friend_id, friend_id=user_id, status='pending').first()
+    if not friendship:
+        return jsonify({'error': 'No pending friend request found'}), 404
+
+    friendship.status = 'accepted'
+    db.session.commit()
+
+    # Создаём обратную запись для взаимности
+    reverse_friendship = Friendship.query.filter_by(user_id=user_id, friend_id=friend_id).first()
+    if not reverse_friendship:
+        db.session.add(Friendship(user_id=user_id, friend_id=friend_id, status='accepted'))
+        db.session.commit()
+
+    return jsonify({'message': 'Friend request accepted', 'friend_id': friend_id}), 200
 
 @app.route('/api/group_chats', methods=['GET'])
 @token_required
@@ -214,12 +439,24 @@ def create_group_chat(user_id):
     all_member_ids = set(member_ids)
     all_member_ids.add(user_id)  # обязательно добавить текущего пользователя
 
-    for member_id in all_member_ids:
-        if User.query.get(member_id):
-            db.session.add(UserGroupChatAssociation(user_id=member_id, chat_id=new_chat.id))
+    try:
+        for member_id in all_member_ids:
+            if User.query.get(member_id):
+                # Проверяем, существует ли запись
+                existing_association = UserGroupChatAssociation.query.filter_by(
+                    user_id=member_id, chat_id=new_chat.id
+                ).first()
+                if not existing_association:
+                    db.session.add(UserGroupChatAssociation(user_id=member_id, chat_id=new_chat.id))
 
-    db.session.commit()
-    return jsonify({'message': 'Групповой чат создан', 'chat_id': new_chat.id}), 201
+        db.session.commit()
+        return jsonify({'message': 'Групповой чат создан', 'chat_id': new_chat.id}), 201
+    except IntegrityError as e:
+        db.session.rollback()
+        return jsonify({'error': 'Чат с такими участниками уже существует или произошёл конфликт.'}), 409
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Ошибка при создании чата'}), 500
 
 @app.route('/api/group_chats/<int:chat_id>/join', methods=['POST'])
 @token_required
@@ -313,6 +550,7 @@ def check_user_info(user_id):
 @app.route('/api/user_info', methods=['GET'])
 @token_required
 def get_user_info(user_id):
+    print(user_id)
     user_info = UserInfo.query.filter_by(id_User=user_id).first()
     if user_info:
         return jsonify({
@@ -444,14 +682,14 @@ def register():
     else:
         return jsonify({'success': True,'message': 'Ошибка при отправке запроса'}), 201
 
-# @app.route("/logout", methods=["GET", "POST"])
-# @login_required
-# def logout():
-#     logout_user()
-#     return redirect(url_for('index'))
+@app.route('/api/logout', methods=['POST'])
+@token_required
+def logout(user_id):
+    logout_user()
+    return jsonify({'message': 'Logged out successfully'}), 200
 
 if (__name__)=='__main__':
-    app.run(host='0.0.0.0', port=5000, debug="true")
-    
-with app.app_context():
-    db.create_all() #debug=True лишает необходимость постоянно перезагружать сервер, то есть он сам обновляется
+    sock = eventlet.listen(('', 5000))
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    eventlet.wsgi.server(sock, app)
+

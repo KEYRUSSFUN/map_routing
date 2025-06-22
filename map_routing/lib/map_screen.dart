@@ -1,4 +1,3 @@
-// Импорты без изменений
 import 'package:collection/collection.dart';
 import 'package:common/buttons/simple_button.dart';
 import 'package:common/listeners/map_input_listener.dart';
@@ -9,7 +8,7 @@ import 'package:map_routing/UIWidgets/tracking_button.dart';
 import 'package:map_routing/data/activity_calculator.dart';
 import 'package:map_routing/data/geometry_provider.dart';
 import 'package:map_routing/data/routing_type.dart';
-import 'package:map_routing/usersData/requests.dart';
+import 'package:map_routing/usersData/registration_service.dart';
 import 'package:map_routing/usersData/user_service.dart';
 import 'package:map_routing/utils/polyline_extensions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,7 +23,6 @@ import 'package:flutter_compass/flutter_compass.dart';
 import 'dart:math' show Point;
 import 'dart:math' as math;
 
-// Основной виджет
 class MapScreen extends StatefulWidget {
   final String? gpxPath;
 
@@ -197,7 +195,6 @@ class _MapScreenState extends State<MapScreen> {
       if (!isStationary &&
           (_trackedRoutePoints.isEmpty ||
               !_isSameLocation(_trackedRoutePoints.last, point))) {
-        print("вызывается");
         setState(() {
           if (_trackedRoutePoints.isNotEmpty) {
             _totalDistance += Geolocator.distanceBetween(
@@ -306,11 +303,21 @@ class _MapScreenState extends State<MapScreen> {
       showSnackBar(context, "Маршрут завершён и статистика сохранена");
     }
 
-    // Очистка данных, если нужно
     setState(() {
       _totalDistance = 0.0;
       _trackedRoutePoints.clear();
     });
+  }
+
+  void _centerCameraOnCurrentLocation() {
+    if (_currentLocationPlacemark == null || _mapWindow == null) {
+      showSnackBar(context, "Местоположение недоступно");
+      return;
+    }
+    final currentPoint = _currentLocationPlacemark!.geometry;
+    _mapWindow!.map.move(
+      CameraPosition(currentPoint, zoom: 16, azimuth: 0, tilt: 0),
+    );
   }
 
   void _createMapObjects(MapWindow mapWindow) {
@@ -423,11 +430,9 @@ class _MapScreenState extends State<MapScreen> {
   double calculateCalories({
     required double distanceMeters,
     required double weightKg,
-    double met = 3.8, // MET для ходьбы ~3.5–4.0
+    double met = 3.8,
   }) {
     double distanceKm = distanceMeters / 1000;
-    // Формула: калории = MET × вес (кг) × время (часы)
-    // Время = дистанция / средняя скорость (например, 5 км/ч)
     double durationHours = distanceKm / 5.0;
     return met * weightKg * durationHours;
   }
@@ -504,8 +509,14 @@ class _MapScreenState extends State<MapScreen> {
                 _buildInfoColumn(
                     "СКОРОСТЬ", "${_currentSpeed.toStringAsFixed(1)} М/С"),
                 _verticalDivider(),
-                _buildInfoColumn("СТАТУС", _isPaused ? "⏸ ПАУЗА" : "В ДВИЖЕНИИ",
-                    color: _isPaused ? Colors.orange : Colors.green),
+                _buildInfoColumn(
+                    "СТАТУС",
+                    _isTracking
+                        ? (_isPaused ? "⏸ ПАУЗА" : "В ДВИЖЕНИИ")
+                        : "НА МЕСТЕ",
+                    color: _isTracking
+                        ? (_isPaused ? Colors.orange : Colors.green)
+                        : Colors.blue),
                 _verticalDivider(),
                 _buildInfoColumn("РАССТОЯНИЕ",
                     "${(_totalDistance / 1000).toStringAsFixed(2)} КМ"),
@@ -520,7 +531,6 @@ class _MapScreenState extends State<MapScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Левая колонка с 2 иконками
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -546,18 +556,20 @@ class _MapScreenState extends State<MapScreen> {
                       _onRouteParametersUpdated();
                     },
                   ),
+                  const SizedBox(height: 12),
+                  _iconActionButton(
+                    icon: Icons.my_location,
+                    tooltip: "Вернуться к текущему местоположению",
+                    onPressed: _centerCameraOnCurrentLocation,
+                  ),
                 ],
               ),
-
-              // Кнопка трекинга по центру
               TrackingButton(
                 isTracking: _isTracking,
                 onPressed: () async {
                   _isTracking ? await _stopTracking() : _startTracking();
                 },
               ),
-
-              // Правая кнопка: сохранить
               _iconActionButton(
                 icon: Icons.save_alt,
                 tooltip: "Сохранить маршрут",
@@ -566,14 +578,12 @@ class _MapScreenState extends State<MapScreen> {
                   if (_isTracking && _trackedRoutePoints.isNotEmpty) {
                     path = await GeometryProvider.saveTrackedRouteAsGpx(
                         _trackedRoutePoints);
-
                     final prefs = await SharedPreferences.getInstance();
                     final token = prefs.getString('jwt_token');
                     if (token == null) {
                       showSnackBar(context, "Ошибка: токен не найден");
                       return;
                     }
-
                     showSnackBar(context, "Данные сохранены");
                     _trackedRoutePoints.clear();
                     _routePoints.clear();
@@ -581,7 +591,6 @@ class _MapScreenState extends State<MapScreen> {
                   } else if (_routePoints.isNotEmpty) {
                     path = await GeometryProvider.saveRouteAsGpx(_routePoints);
                   }
-
                   if (path != null && context.mounted) {
                     showSnackBar(context, "Сохранено в файл:\n$path");
                   } else if (!_isTracking || _trackedRoutePoints.isEmpty) {
