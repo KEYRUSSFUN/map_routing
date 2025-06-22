@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:map_routing/complete_profile_page.dart';
+import 'package:map_routing/create_account_page.dart';
 import 'usersData/registration_service.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -18,7 +20,7 @@ class _LoginPageState extends State<LoginPage> {
   String? _errorMessage; // Сообщение об ошибке
 
   final registrationService =
-      RegistrationService(baseUrl: 'http://192.168.1.81:5000');
+      RegistrationService(baseUrl: 'http://192.168.1.105:5000');
 
   @override
   void dispose() {
@@ -42,7 +44,7 @@ class _LoginPageState extends State<LoginPage> {
 
     if (token != null) {
       final checkResponse = await http.get(
-        Uri.parse('http://192.168.1.81:5000/api/user_info/check'),
+        Uri.parse('http://192.168.1.105:5000/api/user_info/check'),
         headers: {'Authorization': token},
       );
 
@@ -64,7 +66,10 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () =>
@@ -75,18 +80,26 @@ class _LoginPageState extends State<LoginPage> {
         padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: ListView(
             children: <Widget>[
+              const Text(
+                'Войдите в Stride',
+                style: TextStyle(
+                  fontSize: 27,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.left,
+              ),
+              const SizedBox(height: 30),
               TextFormField(
                 controller: _emailController,
-                decoration: const InputDecoration(
-                  floatingLabelStyle: TextStyle(color: Colors.blue),
+                decoration: InputDecoration(
+                  floatingLabelStyle: TextStyle(color: Color(0xFF3490DE)),
                   labelText: 'Email',
                   border: OutlineInputBorder(),
                   focusedBorder: OutlineInputBorder(
-                    // Граница при фокусировке
-                    borderSide: BorderSide(color: Colors.blue),
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: Color(0xFF3490DE)),
                   ),
                 ),
                 keyboardType: TextInputType.emailAddress,
@@ -103,14 +116,14 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 20),
               TextFormField(
                 controller: _passwordController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Пароль',
                   border: OutlineInputBorder(),
                   focusedBorder: OutlineInputBorder(
-                    // Граница при фокусировке
-                    borderSide: BorderSide(color: Colors.blue),
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: Color(0xFF3490DE)),
                   ),
-                  floatingLabelStyle: TextStyle(color: Colors.blue),
+                  floatingLabelStyle: TextStyle(color: Color(0xFF3490DE)),
                 ),
                 obscureText: true, // Скрывает пароль
                 validator: (value) {
@@ -120,7 +133,7 @@ class _LoginPageState extends State<LoginPage> {
                   return null;
                 },
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 25),
               if (_errorMessage != null) // Отображаем сообщение об ошибке
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10.0),
@@ -140,21 +153,134 @@ class _LoginPageState extends State<LoginPage> {
                             height: 20,
                             child: CircularProgressIndicator(
                               valueColor: AlwaysStoppedAnimation<Color>(
-                                  Color.fromARGB(255, 21, 217, 243)),
+                                  Color.fromARGB(255, 255, 255, 255)),
                             ),
                           )
                         : const Text(
                             'Войти',
                             style: TextStyle(
-                                color: Color.fromARGB(255, 255, 255, 255)),
+                                color: Color.fromARGB(255, 255, 255, 255),
+                                fontSize: 16),
                           ),
               ),
               const SizedBox(height: 10),
               TextButton(
                 onPressed: () {
-                  // Обработка перехода на страницу регистрации
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const CreateAccountPage()));
                 },
-                child: const Text('Нет аккаунта? Зарегистрироваться'),
+                child: const Text(
+                  'Нет аккаунта? Зарегистрироваться',
+                  style: TextStyle(
+                    color: Color(0xFF3490DE),
+                  ),
+                ),
+              ),
+              const Row(
+                children: [
+                  Expanded(child: Divider(thickness: 1, color: Colors.grey)),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'или',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                  Expanded(child: Divider(thickness: 1, color: Colors.grey)),
+                ],
+              ),
+              const SizedBox(height: 20),
+              OutlinedButton(
+                onPressed: () {},
+                style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                  side: const BorderSide(color: Colors.grey),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    FaIcon(
+                      FontAwesomeIcons.google,
+                      size: 20,
+                    ),
+                    SizedBox(width: 12),
+                    Text(
+                      'Продолжить с Google',
+                      style: TextStyle(
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: () {},
+                style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                  side: const BorderSide(color: Colors.grey),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Я',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFFF0000),
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Text(
+                      'Продолжить с Яндекс',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: () {},
+                style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                  side: const BorderSide(color: Colors.grey),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    FaIcon(
+                      FontAwesomeIcons.vk,
+                      color: Color(0xFF0077FF),
+                      size: 20,
+                    ),
+                    SizedBox(width: 12),
+                    Text(
+                      'Продолжить с ВК',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

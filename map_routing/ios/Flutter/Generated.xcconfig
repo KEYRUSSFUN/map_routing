@@ -1,6 +1,6 @@
 // This is a generated file; do not edit or check into version control.
-FLUTTER_ROOT=E:\Projects\flutter\flutter
-FLUTTER_APPLICATION_PATH=C:\Users\Stray\Documents\GitHub\Runaway\map_routing\map_routing
+FLUTTER_ROOT=C:\flutter
+FLUTTER_APPLICATION_PATH=C:\Projects\Maprun\map_routing\map_routing
 COCOAPODS_PARALLEL_CODE_SIGN=true
 FLUTTER_TARGET=lib\main.dart
 FLUTTER_BUILD_DIR=build

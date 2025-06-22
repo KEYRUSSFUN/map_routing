@@ -81,11 +81,11 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
     }
 
     _chatService =
-        GroupChatService(baseUrl: 'http://192.168.1.81:5000', token: token);
+        GroupChatService(baseUrl: 'http://192.168.1.105:5000', token: token);
     _friendService =
-        FriendService(baseUrl: 'http://192.168.1.81:5000', token: token);
+        FriendService(baseUrl: 'http://192.168.1.105:5000', token: token);
     _userSearchService =
-        UserSearchService(baseUrl: 'http://192.168.1.81:5000', token: token);
+        UserSearchService(baseUrl: 'http://192.168.1.105:5000', token: token);
     final userService = UserService();
     final userInfo = await userService.fetchUserInfo();
     if (userInfo == null) {
@@ -287,7 +287,18 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        title: const Text(""),
+        automaticallyImplyLeading: false,
+        title: const Text(
+          "Группы",
+          style: TextStyle(fontSize: 22),
+        ),
+        actions: [
+          IconButton(
+              onPressed: () {}, icon: const Icon(Icons.message_outlined)),
+          IconButton(onPressed: () {}, icon: const Icon(Icons.search)),
+          IconButton(
+              onPressed: () {}, icon: const Icon(Icons.settings_outlined))
+        ],
         elevation: 0,
         backgroundColor: Colors.transparent,
       ),
@@ -297,7 +308,7 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
         backgroundColor: Colors.white,
         elevation: 4,
         tooltip: "Создать новый чат",
-        child: const Icon(Icons.add, color: Colors.black),
+        child: const Icon(Icons.add, color: Color(0xFF3490DE)),
       ),
     );
   }

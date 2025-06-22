@@ -10,7 +10,7 @@ class UserService {
     if (token == null) return null;
 
     final response = await http.get(
-      Uri.parse('http://192.168.1.81:5000/api/user_info'),
+      Uri.parse('http://192.168.1.105:5000/api/user_info'),
       headers: {'Authorization': '$token', 'Content-Type': 'application/json'},
     );
 
@@ -30,8 +30,8 @@ class UserService {
     if (token == null) return null;
 
     final url = userId == null
-        ? Uri.parse('http://192.168.1.81:5000/api/user_info')
-        : Uri.parse('http://192.168.1.81:5000/api/user_info/$userId');
+        ? Uri.parse('http://192.168.1.105:5000/api/user_info')
+        : Uri.parse('http://192.168.1.105:5000/api/user_info/$userId');
 
     final response = await http.get(
       url,
@@ -55,7 +55,7 @@ class UserService {
     if (token == null) return null;
 
     final response = await http.post(
-      Uri.parse('http://192.168.1.81:5000/api/user_info'),
+      Uri.parse('http://192.168.1.105:5000/api/user_info'),
       headers: {
         'Authorization': '$token',
         'Content-Type': 'application/json',
@@ -79,7 +79,7 @@ class UserService {
     if (token == null) return null;
 
     final response = await http.post(
-      Uri.parse('http://192.168.1.81:5000/api/logout'),
+      Uri.parse('http://192.168.1.105:5000/api/logout'),
       headers: {'Authorization': '$token'},
     );
 

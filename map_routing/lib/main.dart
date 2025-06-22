@@ -6,6 +6,7 @@ import 'package:map_routing/group_chats_page.dart';
 import 'package:map_routing/profile.dart';
 import 'package:map_routing/start_page.dart';
 import 'package:map_routing/map_screen.dart';
+import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yandex_maps_mapkit/init.dart' as init;
 import 'tokenVerify.dart';
@@ -42,7 +43,7 @@ void main() async {
           //Теперь у нас есть токен, и мы можем проверить его
           return FutureBuilder<bool>(
             future: TokenVerify(
-                    token: token ?? '', baseUrl: 'http://192.168.1.81:5000')
+                    token: token ?? '', baseUrl: 'http://192.168.1.105:5000')
                 .isTokenValidOnServer(),
             // Вызываем функцию проверки токена на сервере
             builder:
@@ -72,6 +73,7 @@ void main() async {
       '/start_page': (context) => const StartPage(),
       '/home': (context) => const MapkitFlutterApp(),
       '/login_page': (context) => const LoginPage(),
+      '/profile_page': (context) => const ProfilePage()
     },
   ));
 }
@@ -125,8 +127,9 @@ class _MapkitFlutterAppState extends State<MapkitFlutterApp> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Группы'),
-          BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Карта'),
+          BottomNavigationBarItem(icon: Icon(Icons.groups), label: 'Группы'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.location_on), label: 'Карта'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Профиль'),
         ],
         currentIndex: _selectedIndex,

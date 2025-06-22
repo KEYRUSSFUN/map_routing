@@ -68,7 +68,7 @@ class _StartPageState extends State<StartPage> {
                 ),
                 // Девиз приложения
                 Positioned(
-                  top: screenHeight * 0.66,
+                  top: screenHeight * 0.65,
                   left: 0,
                   right: 0,
                   child: const Column(
@@ -78,7 +78,7 @@ class _StartPageState extends State<StartPage> {
                         'Вся ваша активность\n в одном месте',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          fontSize: 25,
+                          fontSize: 22,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),

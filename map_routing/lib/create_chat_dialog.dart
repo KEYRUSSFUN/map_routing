@@ -36,7 +36,10 @@ class _CreateChatDialogState extends State<CreateChatDialog> {
           children: [
             TextField(
               controller: _titleController,
-              decoration: const InputDecoration(labelText: 'Название чата'),
+              decoration: const InputDecoration(
+                  labelText: 'Название чата',
+                  labelStyle:
+                      TextStyle(color: Color(0xFF3490DE), fontSize: 15)),
             ),
             const SizedBox(height: 10),
             const Text("Выберите участников:",
@@ -87,7 +90,10 @@ class _CreateChatDialogState extends State<CreateChatDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text("Отмена"),
+          child: const Text(
+            "Отмена",
+            style: TextStyle(color: Color(0xFF3490DE), fontSize: 15),
+          ),
         ),
         ElevatedButton(
           onPressed: () async {
@@ -119,7 +125,10 @@ class _CreateChatDialogState extends State<CreateChatDialog> {
             widget.onChatCreated(newChat);
             Navigator.pop(context);
           },
-          child: const Text("Создать"),
+          child: const Text(
+            "Создать",
+            style: TextStyle(fontSize: 16),
+          ),
         ),
       ],
     );

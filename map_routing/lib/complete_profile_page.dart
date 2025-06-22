@@ -35,7 +35,7 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
     };
 
     final response = await http.post(
-      Uri.parse('http://192.168.1.81:5000/api/user_info'),
+      Uri.parse('http://192.168.1.105:5000/api/user_info'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': widget.token,
@@ -55,23 +55,38 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Заполните профиль')),
+      appBar: AppBar(),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
           child: ListView(
             children: [
+              const Text(
+                'Заполните ваш профиль',
+                style: TextStyle(
+                  fontSize: 27,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.left,
+              ),
+              const SizedBox(height: 30),
               TextFormField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Имя'),
+                decoration: const InputDecoration(
+                  labelText: 'Имя',
+                  floatingLabelStyle: TextStyle(color: Colors.black87),
+                ),
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Введите имя' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _weightController,
-                decoration: const InputDecoration(labelText: 'Вес (кг)'),
+                decoration: const InputDecoration(
+                  labelText: 'Вес (кг)',
+                  floatingLabelStyle: TextStyle(color: Colors.black87),
+                ),
                 keyboardType: TextInputType.number,
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Введите вес' : null,
@@ -79,7 +94,10 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _heightController,
-                decoration: const InputDecoration(labelText: 'Рост (см)'),
+                decoration: const InputDecoration(
+                  labelText: 'Рост (см)',
+                  floatingLabelStyle: TextStyle(color: Colors.black87),
+                ),
                 keyboardType: TextInputType.number,
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Введите рост' : null,
@@ -87,17 +105,51 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: _sex,
-                decoration: const InputDecoration(labelText: 'Пол'),
+                decoration: const InputDecoration(
+                  labelText: 'Пол',
+                  floatingLabelStyle: TextStyle(color: Colors.black87),
+                ),
                 items: const [
-                  DropdownMenuItem(value: 'male', child: Text('Мужской')),
-                  DropdownMenuItem(value: 'female', child: Text('Женский')),
+                  DropdownMenuItem(
+                    value: 'male',
+                    child: Text(
+                      'Мужской',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'female',
+                    child: Text(
+                      'Женский',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
                 ],
                 onChanged: (value) => setState(() => _sex = value!),
+                dropdownColor: Colors.white,
+                icon: const Icon(
+                  Icons.arrow_drop_down,
+                  color: Colors.grey,
+                  size: 24,
+                ),
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Colors.black87,
+                ),
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _ageController,
-                decoration: const InputDecoration(labelText: 'Возраст'),
+                decoration: const InputDecoration(
+                  labelText: 'Возраст',
+                  floatingLabelStyle: TextStyle(color: Colors.black87),
+                ),
                 keyboardType: TextInputType.number,
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Введите возраст' : null,
@@ -105,15 +157,20 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _countryController,
-                decoration: const InputDecoration(labelText: 'Страна'),
-                keyboardType: TextInputType.text,
+                decoration: const InputDecoration(
+                  labelText: 'Страна',
+                  floatingLabelStyle: TextStyle(color: Colors.black87),
+                ),
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Введите страну' : null,
               ),
               const SizedBox(height: 24),
               ElevatedButton(
                 onPressed: _submitProfile,
-                child: const Text('Сохранить'),
+                child: const Text(
+                  'Сохранить',
+                  style: TextStyle(fontSize: 16),
+                ),
               ),
             ],
           ),

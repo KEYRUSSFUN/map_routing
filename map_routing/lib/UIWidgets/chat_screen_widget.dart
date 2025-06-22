@@ -104,7 +104,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
 
   Future<void> _initializeSocket() async {
     _socketService.off('new_message');
-    await _socketService.initialize('http://192.168.1.81:5000');
+    await _socketService.initialize('http://192.168.1.105:5000');
     _socketService.on('new_message', (data) {
       setState(() {
         messages.insert(0, {
@@ -145,8 +145,8 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
 
   Future<void> _fetchChatData() async {
     try {
-      final groupChatService =
-          GroupChatService(baseUrl: 'http://192.168.1.81:5000', token: _token!);
+      final groupChatService = GroupChatService(
+          baseUrl: 'http://192.168.1.105:5000', token: _token!);
       final chatDetails =
           await groupChatService.getChatDetails(widget.chatId).timeout(
                 const Duration(seconds: 10),

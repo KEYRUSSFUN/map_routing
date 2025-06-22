@@ -32,7 +32,7 @@ class StatisticsService {
     final token = prefs.getString('jwt_token');
 
     final response = await http.get(
-      Uri.parse('http://192.168.1.81:5000/api/user_statistic'),
+      Uri.parse('http://192.168.1.105:5000/api/user_statistic'),
       headers: {'Authorization': token ?? ''},
     );
 

@@ -291,7 +291,7 @@ class _MapScreenState extends State<MapScreen> {
       return;
     }
 
-    await RegistrationService(baseUrl: "http://192.168.1.81:5000")
+    await RegistrationService(baseUrl: "http://192.168.1.105:5000")
         .saveTrackingData(
       distance: _totalDistance,
       steps: steps,
@@ -532,8 +532,8 @@ class _MapScreenState extends State<MapScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Column(
-                mainAxisSize: MainAxisSize.min,
                 children: [
+                  const SizedBox(height: 130),
                   _iconActionButton(
                     icon: Icons.delete_outline,
                     tooltip: "Очистить маршруты",
@@ -543,6 +543,22 @@ class _MapScreenState extends State<MapScreen> {
                       _onRouteParametersUpdated();
                     },
                   ),
+                ],
+              ),
+              Column(
+                children: [
+                  const SizedBox(height: 105),
+                  TrackingButton(
+                    isTracking: _isTracking,
+                    onPressed: () async {
+                      _isTracking ? await _stopTracking() : _startTracking();
+                    },
+                  ),
+                ],
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   const SizedBox(height: 12),
                   _iconActionButton(
                     icon: Icons.swap_horiz,
@@ -562,41 +578,37 @@ class _MapScreenState extends State<MapScreen> {
                     tooltip: "Вернуться к текущему местоположению",
                     onPressed: _centerCameraOnCurrentLocation,
                   ),
+                  const SizedBox(height: 12),
+                  _iconActionButton(
+                    icon: Icons.save_alt,
+                    tooltip: "Сохранить маршрут",
+                    onPressed: () async {
+                      String? path;
+                      if (_isTracking && _trackedRoutePoints.isNotEmpty) {
+                        path = await GeometryProvider.saveTrackedRouteAsGpx(
+                            _trackedRoutePoints);
+                        final prefs = await SharedPreferences.getInstance();
+                        final token = prefs.getString('jwt_token');
+                        if (token == null) {
+                          showSnackBar(context, "Ошибка: токен не найден");
+                          return;
+                        }
+                        showSnackBar(context, "Данные сохранены");
+                        _trackedRoutePoints.clear();
+                        _routePoints.clear();
+                        _totalDistance = 0.0;
+                      } else if (_routePoints.isNotEmpty) {
+                        path =
+                            await GeometryProvider.saveRouteAsGpx(_routePoints);
+                      }
+                      if (path != null && context.mounted) {
+                        showSnackBar(context, "Сохранено в файл:\n$path");
+                      } else if (!_isTracking || _trackedRoutePoints.isEmpty) {
+                        showSnackBar(context, "Нет данных для сохранения");
+                      }
+                    },
+                  ),
                 ],
-              ),
-              TrackingButton(
-                isTracking: _isTracking,
-                onPressed: () async {
-                  _isTracking ? await _stopTracking() : _startTracking();
-                },
-              ),
-              _iconActionButton(
-                icon: Icons.save_alt,
-                tooltip: "Сохранить маршрут",
-                onPressed: () async {
-                  String? path;
-                  if (_isTracking && _trackedRoutePoints.isNotEmpty) {
-                    path = await GeometryProvider.saveTrackedRouteAsGpx(
-                        _trackedRoutePoints);
-                    final prefs = await SharedPreferences.getInstance();
-                    final token = prefs.getString('jwt_token');
-                    if (token == null) {
-                      showSnackBar(context, "Ошибка: токен не найден");
-                      return;
-                    }
-                    showSnackBar(context, "Данные сохранены");
-                    _trackedRoutePoints.clear();
-                    _routePoints.clear();
-                    _totalDistance = 0.0;
-                  } else if (_routePoints.isNotEmpty) {
-                    path = await GeometryProvider.saveRouteAsGpx(_routePoints);
-                  }
-                  if (path != null && context.mounted) {
-                    showSnackBar(context, "Сохранено в файл:\n$path");
-                  } else if (!_isTracking || _trackedRoutePoints.isEmpty) {
-                    showSnackBar(context, "Нет данных для сохранения");
-                  }
-                },
               ),
             ],
           ),

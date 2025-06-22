@@ -146,7 +146,7 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
     }
     setState(() {
       friendService =
-          FriendService(baseUrl: 'http://192.168.1.81:5000', token: token);
+          FriendService(baseUrl: 'http://192.168.1.105:5000', token: token);
     });
   }
 
@@ -176,6 +176,11 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () =>
+              Navigator.pushReplacementNamed(context, '/start_page'),
+        ),
         title: const Text("Профиль"),
         surfaceTintColor: Colors.white,
         backgroundColor: Colors.white,
@@ -453,6 +458,16 @@ class _WeeklyActivityChartState extends State<WeeklyActivityChart> {
     return (max < 1.0) ? 1.0 : (max * 1.2).ceilToDouble();
   }
 
+  List<String> _getDayLabels() {
+    final now = DateTime.now();
+    final startDate = now.subtract(const Duration(days: 7));
+    final days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    return List.generate(7, (index) {
+      final date = startDate.add(Duration(days: index));
+      return days[date.weekday % 7];
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<double>>(
@@ -463,43 +478,79 @@ class _WeeklyActivityChartState extends State<WeeklyActivityChart> {
         }
 
         final weeklyData = snapshot.data!;
+        final maxY = _getMaxY(weeklyData);
+        final dayLabels = _getDayLabels();
         return LineChart(
           LineChartData(
-            backgroundColor: Colors.white, // Fixed background color to white
+            backgroundColor: const Color.fromARGB(255, 250, 250, 250),
             minY: 0,
-            maxY: _getMaxY(weeklyData),
+            maxY: maxY,
             titlesData: FlTitlesData(
               bottomTitles: AxisTitles(
                 sideTitles: SideTitles(
                   showTitles: true,
+                  interval: 1,
                   getTitlesWidget: (value, meta) {
-                    const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-                    return Text(days[value.toInt() % 7]);
+                    final index = value.toInt();
+                    if (index >= 0 && index < weeklyData.length) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 5),
+                        child: Text(
+                          dayLabels[index],
+                          style: const TextStyle(
+                              fontSize: 12, color: Colors.black87),
+                        ),
+                      );
+                    }
+                    return const Text('');
                   },
                 ),
               ),
-              leftTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: true),
+              leftTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: 40,
+                  interval: maxY / 2,
+                  getTitlesWidget: (value, meta) {
+                    if (value == 0 || value == maxY || value == maxY / 2) {
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Text(
+                          value.toInt().toString(),
+                          style: const TextStyle(
+                              fontSize: 10, color: Colors.black87),
+                        ),
+                      );
+                    }
+                    return const Text('');
+                  },
+                ),
               ),
+              topTitles:
+                  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles:
+                  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
             ),
             lineBarsData: [
               LineChartBarData(
                 spots: List.generate(
                   weeklyData.length,
-                  (i) => FlSpot(i.toDouble(), weeklyData[i]),
+                  (i) => FlSpot(i.toDouble(),
+                      double.parse(weeklyData[i].toStringAsFixed(2))),
                 ),
-                isCurved: true,
-                color: Colors.blue,
-                dotData: const FlDotData(show: false),
+                isCurved: false,
+                color: const Color(0xFF3490DE),
+                barWidth: 2,
+                dotData: const FlDotData(show: true),
                 belowBarData: BarAreaData(
                   show: true,
-                  color: Colors.blue.withOpacity(0.2),
+                  color: const Color(0xFF3490DE).withOpacity(0.2),
                 ),
               ),
             ],
             gridData: FlGridData(
               show: true,
-              horizontalInterval: 1,
+              horizontalInterval: maxY / 2,
               verticalInterval: 1,
               getDrawingHorizontalLine: (value) =>
                   FlLine(color: Colors.grey[400]!, strokeWidth: 1),

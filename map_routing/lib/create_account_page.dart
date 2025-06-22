@@ -12,66 +12,57 @@ class CreateAccountPage extends StatefulWidget {
 
 class _CreateAccountPageState extends State<CreateAccountPage> {
   final RegistrationService _registrationService =
-      RegistrationService(baseUrl: 'http://192.168.1.81:5000');
+      RegistrationService(baseUrl: 'http://192.168.1.105:5000');
 
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   String? _emailError;
   String? _passwordError;
-  bool _isFormValid = false;
 
   Future<void> _register() async {
-    setState(() {});
-
-    final email = _emailController.text;
-    final password = _passwordController.text;
-
-    bool registrationResult =
-        await _registrationService.registerUser(email, password);
-
-    setState(() {
-      if (registrationResult) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Успешная регистрация!')));
-        Navigator.pushReplacementNamed(context, '/login_page');
-      } else {}
-    });
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _emailController.addListener(_validateForm);
-    _passwordController.addListener(_validateForm);
-  }
-
-  @override
-  void dispose() {
-    _emailController.removeListener(_validateForm);
-    _passwordController.removeListener(_validateForm);
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  void _validateForm() {
     final emailError = Validators.validateEmail(_emailController.text);
     final passwordError = Validators.validatePassword(_passwordController.text);
 
     setState(() {
       _emailError = emailError;
       _passwordError = passwordError;
-      _isFormValid = emailError == null && passwordError == null;
     });
+
+    if (emailError == null && passwordError == null) {
+      final email = _emailController.text;
+      final password = _passwordController.text;
+
+      bool registrationResult =
+          await _registrationService.registerUser(email, password);
+
+      if (registrationResult) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Успешная регистрация!')));
+        Navigator.pushReplacementNamed(context, '/login_page');
+      } else {
+        setState(() {
+          _emailError = 'Ошибка регистрации. Попробуйте снова.';
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.close),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () =>
+              Navigator.pushReplacementNamed(context, '/start_page'),
         ),
       ),
       body: Padding(
@@ -81,9 +72,9 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'Создание аккаунта',
+              'Создать аккаунт',
               style: TextStyle(
-                fontSize: 30,
+                fontSize: 27,
                 fontWeight: FontWeight.bold,
               ),
               textAlign: TextAlign.left,
@@ -92,6 +83,7 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
             TextField(
               controller: _emailController,
               decoration: InputDecoration(
+                floatingLabelStyle: TextStyle(color: Color(0xFF3490DE)),
                 labelText: 'Email',
                 hintText: 'Email',
                 border: const OutlineInputBorder(),
@@ -103,6 +95,7 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
             TextField(
               controller: _passwordController,
               decoration: InputDecoration(
+                floatingLabelStyle: TextStyle(color: Color(0xFF3490DE)),
                 labelText: 'Пароль',
                 hintText: 'Пароль',
                 border: const OutlineInputBorder(),
@@ -112,10 +105,7 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
             ),
             const SizedBox(height: 25),
             ElevatedButton(
-              onPressed: _isFormValid ? _register : null,
-              style: ElevatedButton.styleFrom(
-                disabledBackgroundColor: Colors.grey[300],
-              ),
+              onPressed: _register,
               child: const Text(
                 'Создать аккаунт',
                 style: TextStyle(fontSize: 16),

@@ -107,7 +107,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Профиль обновлён: $firstName, $country')),
         );
-        Navigator.pop(context); // Вернуться на предыдущий экран
+        Navigator.pushReplacementNamed(
+            context, '/profile_page'); // Вернуться на предыдущий экран
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Ошибка сохранения профиля')),
@@ -152,9 +153,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
         surfaceTintColor: Colors.white,
         backgroundColor: Colors.white,
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
+          preferredSize: const Size.fromHeight(0.5),
           child: Container(
-            color: Colors.grey[400],
+            color: Colors.grey[300],
             height: 1.0,
           ),
         ),
@@ -185,62 +186,88 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 ),
               ),
               const SizedBox(height: 20),
-              TextField(
-                controller: _firstNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Имя',
-                  border: OutlineInputBorder(),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _firstNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Имя',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextField(
+                      controller: _countryController,
+                      decoration: const InputDecoration(
+                        labelText: 'Страна',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
-              TextField(
-                controller: _countryController,
-                decoration: const InputDecoration(
-                  labelText: 'Страна',
-                  border: OutlineInputBorder(),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _heightController,
+                      decoration: const InputDecoration(
+                        labelText: 'Рост (см)',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextField(
+                      controller: _weightController,
+                      decoration: const InputDecoration(
+                        labelText: 'Вес (кг)',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                  )
+                ],
               ),
               const SizedBox(height: 16),
-              TextField(
-                controller: _heightController,
-                decoration: const InputDecoration(
-                  labelText: 'Рост (см)',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _weightController,
-                decoration: const InputDecoration(
-                  labelText: 'Вес (кг)',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _ageController,
-                decoration: const InputDecoration(
-                  labelText: 'Возраст',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _sex,
-                decoration: const InputDecoration(
-                  labelText: 'Пол',
-                  border: OutlineInputBorder(),
-                ),
-                items: ['М', 'Ж'].map((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(value),
-                  );
-                }).toList(),
-                onChanged: (value) => setState(() => _sex = value!),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _ageController,
+                      decoration: const InputDecoration(
+                        labelText: 'Возраст',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: _sex,
+                      decoration: const InputDecoration(
+                        labelText: 'Пол',
+                        border: OutlineInputBorder(),
+                        floatingLabelStyle: TextStyle(color: Colors.black87),
+                      ),
+                      items: ['М', 'Ж'].map((String value) {
+                        return DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value),
+                        );
+                      }).toList(),
+                      onChanged: (value) => setState(() => _sex = value!),
+                      dropdownColor: Colors.white,
+                    ),
+                  )
+                ],
               ),
               const SizedBox(height: 20),
               _isLoading
