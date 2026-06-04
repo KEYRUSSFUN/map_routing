@@ -28,6 +28,9 @@ final class FlutterMapWidgetState extends State<FlutterMapWidget> {
   Widget build(BuildContext context) {
     return SafeArea(
       top: false,
+      bottom: false,
+      left: false,
+      right: false,
       child: YandexMap(
         onMapCreated: _onMapCreated,
         platformViewType: PlatformViewType.Hybrid,

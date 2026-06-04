@@ -1,7 +1,7 @@
 common
 3.2
-file:///C:/Projects/Maprun/map_routing/common/
-file:///C:/Projects/Maprun/map_routing/common/lib/
+file:///C:/Projects/map_routing-main/common/
+file:///C:/Projects/map_routing-main/common/lib/
 async
 3.4
 file:///C:/Users/vladr/AppData/Local/Pub/Cache/hosted/pub.dev/async-2.12.0/

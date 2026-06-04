@@ -1,5 +1,5 @@
 name: map_routing
-description: "Mapkit SDK sample app with routes building"
+description: "StrideTrack — приложение для бега и отслеживания маршрутов"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: "none" # Remove this line if you wish to publish to pub.dev
@@ -54,6 +54,8 @@ dependencies:
   socket_io_client: ^2.0.0
   path: any
   http_parser: ^4.1.2
+  google_fonts: ^6.2.1
+  flutter_local_notifications: ^19.5.0
 
 dev_dependencies:
   flutter_test:
@@ -65,6 +67,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^2.0.0
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -72,14 +75,26 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
   assets:
-    - assets/start_point.png
+    - assets/branding/app_icon.png
+    - assets/branding/logo.png
     - assets/ic_finish_point.png
     - assets/noBgWhite.png
     - assets/start_page_bg.jpg
     - assets/nav_icons/arrow.png
     - assets/images/profile.png
+    - assets/onboarding/onboarding_1.png
+    - assets/onboarding/onboarding_2.png
+    - assets/onboarding/onboarding_3.png
+    - assets/profile/cover.jpg
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/branding/app_icon.png
+  adaptive_icon_background: "#00E676"
+  adaptive_icon_foreground: assets/branding/app_icon.png

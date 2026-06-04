@@ -12,7 +12,7 @@ class ActivityCalculator {
     return (distanceMeters / averageStepLengthMeters).round();
   }
 
-  // Расчёт калорий при ходьбе
+  
   double calculateWalkingCalories({
     required double distanceMeters,
     double met = 3.8,
@@ -23,7 +23,7 @@ class ActivityCalculator {
     return met * weightKg * durationHours;
   }
 
-  // Расчёт калорий при беге
+  
   double calculateRunningCalories({
     required double distanceMeters,
     double met = 9.0,

@@ -1,0 +1,512 @@
+{
+  "info": {
+    "name": "App For Runners (API tests)",
+    "_postman_id": "0d9bcb2b-8d4c-4c1d-9c1b-9c8d7fd8b4d1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Collection with Postman tests for the App For Runners backend."
+  },
+  "item": [
+    {
+      "name": "Swagger (public)",
+      "item": [
+        {
+          "name": "GET /swagger.json",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const data = pm.response.json();",
+                  "pm.test(\"openapi version is 3.0.3\", function () {",
+                  "  pm.expect(data.openapi).to.eql(\"3.0.3\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5000/swagger.json",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["swagger.json"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /docs/",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5000/docs/",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["docs"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth + Profile (JWT flow)",
+      "item": [
+        {
+          "name": "POST /register",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const email = `user_${Date.now()}@example.com`;",
+                  "pm.collectionVariables.set(\"email\", email);",
+                  "pm.collectionVariables.unset(\"token\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status 201\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5000/register",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["register"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status 201\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const data = pm.response.json();",
+                  "pm.test(\"Has token\", function () {",
+                  "  pm.expect(data).to.have.property(\"token\");",
+                  "  pm.expect(data.token).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set(\"token\", data.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5000/login",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/user_info/check (before profile)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const data = pm.response.json();",
+                  "pm.test(\"filled = false\", function () {",
+                  "  pm.expect(data.filled).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/user_info/check",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "user_info", "check"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/user_info (create profile)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const data = pm.response.json();",
+                  "pm.test(\"success = true\", function () {",
+                  "  pm.expect(data.success).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Alex\",\n  \"weight\": 72.5,\n  \"height\": 180,\n  \"sex\": \"male\",\n  \"age\": 28\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/user_info",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "user_info"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/user_info/check (after profile)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const data = pm.response.json();",
+                  "pm.test(\"filled = true\", function () {",
+                  "  pm.expect(data.filled).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/user_info/check",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "user_info", "check"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /token_verify",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const data = pm.response.json();",
+                  "pm.test(\"valid = true\", function () {",
+                  "  pm.expect(data.valid).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/token_verify",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["token_verify"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Routes (маршруты)",
+      "item": [
+        {
+          "name": "GET /api/routes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/routes",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "routes"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/routes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"path\": {\n    \"type\": \"LineString\",\n    \"coordinates\": [[37.617, 55.755], [37.618, 55.756]]\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/routes",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "routes"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Groups (группы)",
+      "item": [
+        {
+          "name": "GET /api/groups",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/groups",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "groups"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/groups",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Бегуны\",\n  \"description\": \"Группа для любителей бега\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/groups",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "groups"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/groups/{id}/messages",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/groups/1/messages",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "groups", "1", "messages"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "email",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": "secret123"
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ]
+}

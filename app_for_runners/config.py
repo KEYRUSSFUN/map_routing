@@ -1,0 +1,7 @@
+import os
+
+class Config:
+    SECRET_KEY = '2d75155246883f023ee10d89cfae0663e3515f9a'
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///kurs.db'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    CORS_ALLOWED_ORIGINS = "*"

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:map_routing/data/models/track_point.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:xml/xml.dart';
@@ -88,27 +89,42 @@ class GeometryProvider {
     }
   }
 
-  static Future<String?> saveTrackedRouteAsGpx(List<Point> points) async {
+  static Future<String?> saveTrackedRouteAsGpx(List<TrackPoint> points) async {
     if (points.isEmpty) return null;
 
-    final buffer = StringBuffer();
-    buffer.writeln('<?xml version="1.0" encoding="UTF-8"?>');
-    buffer.writeln('<gpx version="1.1" creator="YourAppName">');
-    buffer.writeln('  <trk><name>Tracked Route</name><trkseg>');
-
-    for (final point in points) {
-      buffer.writeln(
-          '    <trkpt lat="${point.latitude}" lon="${point.longitude}"></trkpt>');
-    }
-
-    buffer.writeln('  </trkseg></trk>');
-    buffer.writeln('</gpx>');
+    final startedAt = points.first.time ?? DateTime.now();
+    final builder = XmlBuilder();
+    builder.processing('xml', 'version="1.0" encoding="UTF-8"');
+    builder.element('gpx', nest: () {
+      builder.attribute('version', '1.1');
+      builder.attribute('creator', 'StrideTrack');
+      builder.element('metadata', nest: () {
+        builder.element('time', nest: startedAt.toUtc().toIso8601String());
+      });
+      builder.element('trk', nest: () {
+        builder.element('name', nest: 'Тренировка');
+        builder.element('trkseg', nest: () {
+          for (final point in points) {
+            builder.element('trkpt', nest: () {
+              builder.attribute('lat', point.latitude);
+              builder.attribute('lon', point.longitude);
+              if (point.elevation != null) {
+                builder.element('ele', nest: point.elevation);
+              }
+              if (point.time != null) {
+                builder.element('time', nest: point.time!.toUtc().toIso8601String());
+              }
+            });
+          }
+        });
+      });
+    });
 
     final directory = await getExternalStorageDirectory();
     final filePath =
         '${directory?.path}/tracked_route_${DateTime.now().millisecondsSinceEpoch}.gpx';
     final file = File(filePath);
-    await file.writeAsString(buffer.toString());
+    await file.writeAsString(builder.buildDocument().toXmlString(pretty: true));
     return filePath;
   }
 

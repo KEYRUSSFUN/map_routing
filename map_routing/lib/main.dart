@@ -1,22 +1,28 @@
 import 'package:common/resources/theme.dart';
 import 'package:flutter/material.dart';
-import 'package:map_routing/app_theme.dart';
-import 'package:map_routing/aunth.dart';
-import 'package:map_routing/group_chats_page.dart';
-import 'package:map_routing/profile.dart';
-import 'package:map_routing/start_page.dart';
-import 'package:map_routing/map_screen.dart';
-import 'package:path/path.dart';
+import 'package:map_routing/core/widgets/stride_track_logo.dart';
+import 'package:map_routing/core/theme/app_theme.dart';
+import 'package:map_routing/core/widgets/app_bottom_nav_bar.dart';
+import 'package:map_routing/features/auth/presentation/login_page.dart';
+import 'package:map_routing/features/chat/presentation/group_chats_page.dart';
+import 'package:map_routing/features/home/presentation/home_page.dart';
+import 'package:map_routing/features/profile/presentation/profile.dart';
+import 'package:map_routing/features/auth/presentation/start_page.dart';
+import 'package:map_routing/features/map/presentation/map_screen.dart';
+import 'package:map_routing/core/services/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yandex_maps_mapkit/init.dart' as init;
-import 'tokenVerify.dart';
+import 'package:map_routing/features/auth/data/token_verify.dart';
+import 'package:map_routing/core/navigation/app_route_observer.dart';
 
-final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
+export 'package:map_routing/core/navigation/app_route_observer.dart'
+    show appRouteObserver;
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  //await dotenv.load(fileName: ".env");
-  init.initMapkit(apiKey: "548e7748-56df-4316-844a-fa548260d146");
+  init.initMapkit(apiKey: '548e7748-56df-4316-844a-fa548260d146');
+  await NotificationService.instance.init();
 
   Future<String?> getToken() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -24,33 +30,28 @@ void main() async {
   }
 
   runApp(MaterialApp(
+    title: 'StrideTrack',
     theme: AppTheme.lightTheme,
     darkTheme: MapkitFlutterTheme.darkTheme,
     themeMode: ThemeMode.system,
-    navigatorObservers: [routeObserver],
+    navigatorObservers: [appRouteObserver],
     home: FutureBuilder<String?>(
       future: getToken(),
       builder: (BuildContext context, AsyncSnapshot<String?> tokenSnapshot) {
         if (tokenSnapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-              body: Center(child: CircularProgressIndicator()));
+          return const StrideTrackSplash();
         } else if (tokenSnapshot.hasError) {
           return Scaffold(
               body: Center(child: Text('Ошибка: ${tokenSnapshot.error}')));
         } else {
           final token = tokenSnapshot.data;
 
-          //Теперь у нас есть токен, и мы можем проверить его
           return FutureBuilder<bool>(
-            future: TokenVerify(
-                    token: token ?? '', baseUrl: 'http://192.168.1.105:5000')
-                .isTokenValidOnServer(),
-            // Вызываем функцию проверки токена на сервере
+            future: TokenVerify(token: token ?? '').isTokenValidOnServer(),
             builder:
                 (BuildContext context, AsyncSnapshot<bool> isValidSnapshot) {
               if (isValidSnapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(
-                    body: Center(child: CircularProgressIndicator()));
+                return const StrideTrackSplash();
               } else if (isValidSnapshot.hasError) {
                 return Scaffold(
                     body: Center(
@@ -61,7 +62,7 @@ void main() async {
                 if (isValid) {
                   return const MapkitFlutterApp();
                 } else {
-                  return const LoginPage();
+                  return const StartPage();
                 }
               }
             },
@@ -80,6 +81,7 @@ void main() async {
 
 class MapkitFlutterApp extends StatefulWidget {
   const MapkitFlutterApp({super.key, this.initialGpxPath});
+
   final String? initialGpxPath;
 
   @override
@@ -89,54 +91,112 @@ class MapkitFlutterApp extends StatefulWidget {
 class _MapkitFlutterAppState extends State<MapkitFlutterApp> {
   final GlobalKey<ProfilePageState> profilePageKey =
       GlobalKey<ProfilePageState>();
+
   final GlobalKey<GroupChatsPageState> groupChatsPageKey =
-      GlobalKey<GroupChatsPageState>(); // Исправляем тип ключа
-  int _selectedIndex = 1;
+      GlobalKey<GroupChatsPageState>();
+
+  final GlobalKey<MapScreenState> mapScreenKey = GlobalKey<MapScreenState>();
+
+  int _selectedNavIndex = 0;
+  int _stackIndex = 0;
   String? _gpxPath;
+
+  bool _workoutActive = false;
+  bool _workoutFullscreen = false;
 
   @override
   void initState() {
     super.initState();
     _gpxPath = widget.initialGpxPath;
-    _selectedIndex = 1;
+    if (_gpxPath != null) {
+      _selectedNavIndex = 1;
+      _stackIndex = 1;
+    }
   }
 
-  void _onItemTapped(int index) {
+  int _stackIndexForNav(int navIndex) {
+    if (navIndex <= 1) return navIndex;
+    return navIndex - 1;
+  }
+
+  void _onWorkoutUiChanged({required bool isActive, required bool isFullscreen}) {
     setState(() {
-      _selectedIndex = index;
-      if (index != 1) _gpxPath = null;
-      if (index == 2) profilePageKey.currentState?.refreshData();
-      if (index == 0)
-        groupChatsPageKey.currentState
-            ?.loadData(); // Вызываем loadData для GroupChatsPage
+      _workoutActive = isActive;
+      _workoutFullscreen = isFullscreen;
     });
   }
 
+  void _onItemTapped(int navIndex) {
+    if (navIndex == 2) {
+      _startWorkout();
+      return;
+    }
+
+    setState(() {
+      _selectedNavIndex = navIndex;
+      _stackIndex = _stackIndexForNav(navIndex);
+      if (navIndex != 1) _gpxPath = null;
+    });
+
+    if (navIndex == 4) profilePageKey.currentState?.refreshData();
+    if (navIndex == 3) groupChatsPageKey.currentState?.loadData();
+  }
+
+  void _startWorkout() {
+    setState(() {
+      _selectedNavIndex = 1;
+      _stackIndex = 1;
+      _gpxPath = null;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      mapScreenKey.currentState?.startTracking();
+    });
+  }
+
+  void _returnToWorkout() {
+    setState(() {
+      _selectedNavIndex = 1;
+      _stackIndex = 1;
+    });
+    mapScreenKey.currentState?.expandWorkout();
+  }
+
+  bool get _hideBottomNav => _workoutFullscreen;
+
   @override
   Widget build(BuildContext context) {
-    final List<Widget> pages = [
-      GroupChatsPage(key: groupChatsPageKey),
-      MapScreen(gpxPath: _gpxPath),
-      ProfilePage(key: profilePageKey),
-    ];
+    final navPadding = _hideBottomNav
+        ? 0.0
+        : AppBottomNavBar.scrollEndPadding(context);
 
     return Scaffold(
+      extendBody: true,
       body: IndexedStack(
-        index: _selectedIndex,
-        children: pages,
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(icon: Icon(Icons.groups), label: 'Группы'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.location_on), label: 'Карта'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Профиль'),
+        index: _stackIndex,
+        children: [
+          const HomePage(),
+          MapScreen(
+            key: mapScreenKey,
+            gpxPath: _gpxPath,
+            bottomNavPadding: navPadding,
+            onWorkoutUiChanged: _onWorkoutUiChanged,
+            onWorkoutSaved: () => profilePageKey.currentState?.refreshData(),
+          ),
+          GroupChatsPage(key: groupChatsPageKey),
+          ProfilePage(key: profilePageKey),
         ],
-        currentIndex: _selectedIndex,
-        selectedItemColor: Colors.blue,
-        onTap: _onItemTapped,
-        backgroundColor: Colors.white,
       ),
+      bottomNavigationBar: _hideBottomNav
+          ? null
+          : AppBottomNavBar(
+              selectedIndex: _selectedNavIndex,
+              onItemSelected: _onItemTapped,
+              onStartWorkout: _startWorkout,
+              showWorkoutBanner:
+                  _workoutActive && !_workoutFullscreen && _stackIndex != 1,
+              onReturnToWorkout: _returnToWorkout,
+            ),
     );
   }
 }
