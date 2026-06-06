@@ -1,0 +1,15 @@
+Flask==3.0.3
+Flask-CORS
+Flask-Login==0.6.3
+Flask-Migrate
+Flask-SocketIO
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.29
+alembic==1.13.1
+psycopg2-binary
+python-dotenv
+PyJWT
+eventlet
+flask-swagger-ui
+Werkzeug==3.0.3
+pytest

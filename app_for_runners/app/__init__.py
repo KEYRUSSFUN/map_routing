@@ -19,7 +19,9 @@ def create_app(config_class=Config):
     init_socket_handlers(socketio)
 
     with app.app_context():
-        db.create_all()
+        db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+        if db_uri.startswith('sqlite'):
+            db.create_all()
 
     from routes import register_blueprints
     register_blueprints(app)
