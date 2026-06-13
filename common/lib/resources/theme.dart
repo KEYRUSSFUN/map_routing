@@ -2,7 +2,12 @@ import 'package:common/resources/typography.dart';
 import 'package:flutter/material.dart';
 
 final class MapkitFlutterTheme {
+  static const primaryGreen = Color(0xFF00E676);
+
   static final lightTheme = ThemeData(
+    progressIndicatorTheme: const ProgressIndicatorThemeData(
+      color: primaryGreen,
+    ),
     colorScheme: ColorScheme(
       brightness: Brightness.light,
       primary: Colors.white,
@@ -20,6 +25,9 @@ final class MapkitFlutterTheme {
   );
 
   static final darkTheme = ThemeData(
+    progressIndicatorTheme: const ProgressIndicatorThemeData(
+      color: primaryGreen,
+    ),
     colorScheme: ColorScheme(
       brightness: Brightness.dark,
       primary: Colors.black,

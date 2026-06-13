@@ -52,16 +52,26 @@ class StrideTrackLogo extends StatelessWidget {
 class StrideTrackSplash extends StatelessWidget {
   const StrideTrackSplash({super.key});
 
+  static const _maxLogoSize = 128.0;
+
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    final shortestSide = MediaQuery.sizeOf(context).shortestSide;
+    final logoSize = (shortestSide * 0.25).clamp(96.0, _maxLogoSize);
+
+    return Scaffold(
       backgroundColor: StrideTrackLogo.primaryGreen,
-      body: Center(
-        child: Image(
-          image: AssetImage(StrideTrackLogo.assetPath),
-          width: 128,
-          height: 128,
-          fit: BoxFit.contain,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Image.asset(
+              StrideTrackLogo.assetPath,
+              width: logoSize,
+              height: logoSize,
+              fit: BoxFit.contain,
+            ),
+          ),
         ),
       ),
     );

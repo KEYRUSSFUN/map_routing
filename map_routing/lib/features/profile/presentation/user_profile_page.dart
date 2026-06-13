@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:map_routing/data/services/user_service.dart';
 import 'package:map_routing/core/navigation/app_route_observer.dart';
+import 'package:map_routing/data/services/statistics_service.dart';
+import 'package:map_routing/data/services/user_service.dart';
+import 'package:map_routing/features/auth/presentation/auth_ui.dart';
 import 'package:map_routing/features/profile/presentation/profile_ui.dart';
 
 class UserProfilePage extends StatefulWidget {
@@ -17,12 +19,19 @@ class UserProfilePageState extends State<UserProfilePage> with RouteAware {
   String country = '';
   String userAvatarUrl = '';
 
+  double? distance;
+  int? steps;
+  double? calories;
+  String? _weekChangeLabel;
+  late Future<List<double>> weeklyActivityDataFuture;
+
   bool isLoading = true;
   ProfileTab _selectedTab = ProfileTab.statistics;
 
   final userService = UserService();
+  final statisticsService = StatisticsService();
 
-  void fetchUserInfo() async {
+  Future<void> fetchUserInfo() async {
     final data = await userService.fetchOtherUserInfo(userId: widget.userId);
 
     if (!mounted) return;
@@ -39,14 +48,58 @@ class UserProfilePageState extends State<UserProfilePage> with RouteAware {
     setState(() {
       name = data['name'] ?? 'Без имени';
       country = data['country'] ?? '';
-      isLoading = false;
+      userAvatarUrl = data['avatar_url']?.toString() ?? '';
     });
+  }
+
+  Future<void> fetchStatistics() async {
+    try {
+      final summary =
+          await statisticsService.fetchAllWeeklyStats(userId: widget.userId);
+      final rawData =
+          await statisticsService.fetchWeeklyStats(userId: widget.userId);
+      final weekChange = await statisticsService.fetchWeekOverWeekChangePercent(
+        userId: widget.userId,
+      );
+
+      final distancePerDay =
+          rawData.map((day) => (day['distance'] as double?) ?? 0.0).toList();
+
+      if (!mounted) return;
+
+      setState(() {
+        distance = summary.distanceKm;
+        steps = summary.steps;
+        calories = summary.calories;
+        _weekChangeLabel =
+            StatisticsService.formatWeekChangeLabel(weekChange);
+        weeklyActivityDataFuture = Future.value(distancePerDay);
+        isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        distance = 0;
+        steps = 0;
+        calories = 0;
+        _weekChangeLabel = 'Нет данных';
+        weeklyActivityDataFuture = Future.value(const [0, 0, 0, 0, 0, 0, 0]);
+        isLoading = false;
+      });
+    }
   }
 
   @override
   void initState() {
     super.initState();
-    fetchUserInfo();
+    weeklyActivityDataFuture = Future.value(const []);
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => isLoading = true);
+    await fetchUserInfo();
+    await fetchStatistics();
   }
 
   @override
@@ -66,8 +119,27 @@ class UserProfilePageState extends State<UserProfilePage> with RouteAware {
 
   @override
   void didPopNext() {
-    fetchUserInfo();
+    _loadData();
   }
+
+  List<ProfileStatPillData> get _statPills => [
+        ProfileStatPillData(
+          icon: Icons.directions_run,
+          label: distance != null && distance! > 0
+              ? '${distance!.toStringAsFixed(1)} км'
+              : '-- км',
+        ),
+        ProfileStatPillData(
+          icon: Icons.terrain,
+          label: steps != null && steps! > 0 ? '$steps шагов' : '-- шагов',
+        ),
+        ProfileStatPillData(
+          icon: Icons.emoji_events_outlined,
+          label: calories != null && calories! > 0
+              ? '${calories!.toStringAsFixed(0)} ккал'
+              : '-- ккал',
+        ),
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -86,23 +158,10 @@ class UserProfilePageState extends State<UserProfilePage> with RouteAware {
           children: [
             ProfileHeader(
               name: name,
-              location: country,
+              location: country.isNotEmpty ? country : 'Страна не указана',
               subtitle: 'Спортсмен',
               avatarUrl: userAvatarUrl.isNotEmpty ? userAvatarUrl : null,
-              statPills: const [
-                ProfileStatPillData(
-                  icon: Icons.directions_run,
-                  label: '42.5 км',
-                ),
-                ProfileStatPillData(
-                  icon: Icons.terrain,
-                  label: '12 ч',
-                ),
-                ProfileStatPillData(
-                  icon: Icons.emoji_events_outlined,
-                  label: '14 дней',
-                ),
-              ],
+              statPills: _statPills,
               onBack: () => Navigator.pop(context),
             ),
             ProfileTabBar(
@@ -124,9 +183,13 @@ class UserProfilePageState extends State<UserProfilePage> with RouteAware {
       case ProfileTab.statistics:
         return _buildStatisticsTab();
       case ProfileTab.achievements:
-        return _buildAchievementsTab();
+        return _buildEmptyTab(
+          'Достижения пользователя пока недоступны',
+        );
       case ProfileTab.history:
-        return _buildHistoryTab();
+        return _buildEmptyTab(
+          'История активности этого пользователя пока недоступна',
+        );
     }
   }
 
@@ -135,139 +198,34 @@ class UserProfilePageState extends State<UserProfilePage> with RouteAware {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         WeeklyActivityBarChart(
-          weeklyDataFuture:
-              Future.value(const [3.2, 5.1, 4.0, 6.8, 2.5, 7.2, 4.6]),
-          totalLabel: 'Всего: 33.4 км',
-          changeLabel: '+12% к прошлой неделе',
+          weeklyDataFuture: weeklyActivityDataFuture,
+          totalLabel: distance != null && distance! > 0
+              ? 'Всего: ${distance!.toStringAsFixed(1)} км'
+              : 'Всего: -- км',
+          changeLabel: _weekChangeLabel ?? 'Нет данных',
         ),
         const SizedBox(height: 20),
         const ProfileSectionHeader(title: 'Личные рекорды'),
         const SizedBox(height: 12),
-        Row(
-          children: const [
-            Expanded(
-              child: PersonalRecordCard(
-                title: 'Самые быстрые 5 км',
-                value: '18:42',
-                badge: 'НОВЫЙ РЕКОРД',
-              ),
-            ),
-            SizedBox(width: 12),
-            Expanded(
-              child: PersonalRecordCard(
-                title: 'Самый длинный забег',
-                value: '42.2 км',
-                subtitle: 'Марафон',
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        const ProfileSectionHeader(title: 'Недавняя активность'),
-        const SizedBox(height: 12),
-        const ActivityCard(
-          title: 'Утренний трейлран',
-          subtitle: 'Вчера в 6:15',
-          stats: [
-            ActivityStat(value: '12.4 км', label: 'Дистанция'),
-            ActivityStat(value: '1 ч 05 м', label: 'Время'),
-            ActivityStat(value: "5'14''", label: 'Средний темп'),
-          ],
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text(
+            'Рекорды пользователя пока не отображаются.',
+            style: profileSubtitleStyle(),
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildAchievementsTab() {
-    const recent = [
-      (Icons.landscape, 'Пиковая форма', false),
-      (Icons.speed, 'Демон скорости', true),
-      (Icons.local_fire_department, '7 дней подряд', false),
-      (Icons.lock_outline, 'Путешественник', true),
-    ];
-
-    const all = [
-      (Icons.landscape, 'Пиковая форма', false, false),
-      (Icons.speed, 'Демон скорости', false, true),
-      (Icons.local_fire_department, '7 дней подряд', false, false),
-      (Icons.emoji_events_outlined, 'Ранняя пташка', false, false),
-      (Icons.directions_run, 'Ниндзя', false, false),
-      (Icons.directions_bike, 'Сотня', false, false),
-      (Icons.lock_outline, 'Путешественник', true, false),
-      (Icons.lock_outline, 'Исследователь', true, false),
-      (Icons.lock_outline, 'Мировой путешественник', true, false),
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ProfileSectionHeader(
-          title: 'Недавние достижения',
-          trailing: 'Смотреть все',
-          onTrailingTap: () {},
-        ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: recent
-              .map(
-                (item) => AchievementBadge(
-                  icon: item.$1,
-                  label: item.$2,
-                  locked: item.$3,
-                ),
-              )
-              .toList(),
-        ),
-        const SizedBox(height: 24),
-        const ProfileSectionHeader(title: 'Все достижения'),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 12,
-          runSpacing: 16,
-          alignment: WrapAlignment.spaceAround,
-          children: all
-              .map(
-                (item) => AchievementBadge(
-                  icon: item.$1,
-                  label: item.$2,
-                  locked: item.$3,
-                  highlighted: item.$4,
-                ),
-              )
-              .toList(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildHistoryTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const ProfileSectionHeader(title: 'История активности'),
-        const SizedBox(height: 12),
-        const ActivityCard(
-          title: 'Утренний трейлран',
-          subtitle: 'Вчера в 8:15',
-          stats: [
-            ActivityStat(value: '12 км', label: 'Дистанция'),
-            ActivityStat(value: '1 ч 0 м', label: 'Время'),
-            ActivityStat(value: "5'14''", label: 'Средний темп'),
-          ],
-        ),
-        const SizedBox(height: 12),
-        const ActivityCard(
-          title: 'Прибрежная поездка',
-          subtitle: '20 окт. 2023',
-          icon: Icons.directions_bike,
-          stats: [
-            ActivityStat(value: '45.2 км', label: 'Дистанция'),
-            ActivityStat(value: '1 ч 52 м', label: 'Время'),
-            ActivityStat(value: '24.2 км/ч', label: 'Средняя скорость'),
-          ],
-        ),
-      ],
+  Widget _buildEmptyTab(String message) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Text(
+        message,
+        textAlign: TextAlign.center,
+        style: profileSubtitleStyle(),
+      ),
     );
   }
 }

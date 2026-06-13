@@ -8,11 +8,13 @@ import 'package:map_routing/data/geometry_provider.dart';
 import 'package:map_routing/data/models/track_point.dart';
 import 'package:map_routing/data/models/workout_activity_type.dart';
 import 'package:map_routing/data/models/workout_session_data.dart';
+import 'package:map_routing/data/route_progress_tracker.dart';
 import 'package:map_routing/data/routing_type.dart';
 import 'package:map_routing/data/services/user_service.dart';
 import 'package:map_routing/features/map/presentation/map_ui_styles.dart';
 import 'package:map_routing/features/map/presentation/save_workout_page.dart';
 import 'package:map_routing/features/map/presentation/widgets/map_idle_overlay.dart';
+import 'package:map_routing/features/map/presentation/widgets/map_location_marker_icon.dart';
 import 'package:map_routing/features/map/presentation/widgets/map_workout_overlay.dart';
 import 'package:map_routing/features/map/presentation/widgets/workout_metrics_sheet.dart';
 import 'package:map_routing/shared/utils/polyline_extensions.dart';
@@ -37,30 +39,37 @@ class MapScreen extends StatefulWidget {
     this.onWorkoutUiChanged,
     this.onWorkoutSaved,
     this.bottomNavPadding = 0,
+    this.isTabActive = true,
   }) : super(key: key);
 
   final String? gpxPath;
   final WorkoutUiChangedCallback? onWorkoutUiChanged;
   final VoidCallback? onWorkoutSaved;
   final double bottomNavPadding;
+  final bool isTabActive;
 
   @override
   State<MapScreen> createState() => MapScreenState();
 }
 
-class MapScreenState extends State<MapScreen> {
+class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   MapWindow? _mapWindow;
+  MapObjectCollection? _userLocationCollection;
+  MapObjectCollection? _placemarksCollection;
+  MapObjectCollection? _routesCollection;
+  Point? _lastKnownPoint;
+  double? _lastKnownHeading;
+  bool _appInForeground = true;
+  DateTime? _lastTrackingUiUpdate;
+  static const _trackingUiInterval = Duration(milliseconds: 500);
   var _routePoints = <Point>[];
   var _drivingRoutes = <DrivingRoute>[];
   var _pedestrianRoutes = <MasstransitRoute>[];
   var _publicTransportRoutes = <MasstransitRoute>[];
   var _currentRoutingType = RoutingType.driving;
 
-  late final MapObjectCollection _userLocationCollection;
   PlacemarkMapObject? _currentLocationPlacemark;
-  late final image_provider.ImageProvider _arrowImageProvider =
-      image_provider.ImageProvider.fromImageProvider(
-          const AssetImage('assets/nav_icons/arrow.png'));
+  image_provider.ImageProvider? _locationMarkerProvider;
 
   bool _isTracking = false;
   bool _isMinimized = false;
@@ -86,11 +95,15 @@ class MapScreenState extends State<MapScreen> {
   final DraggableScrollableController _metricsSheetController =
       DraggableScrollableController();
 
+  RouteProgressTracker? _routeProgressTracker;
+  bool _isGuidedWorkout = false;
+  double _guidedRemainingM = 0;
+  double _guidedProgress = 0;
+  bool _isOffRoute = false;
+
   late final DrivingRouter _drivingRouter;
   late final PedestrianRouter _pedestrianRouter;
   late final MasstransitRouter _publicTransportRouter;
-  late final MapObjectCollection _placemarksCollection;
-  late final MapObjectCollection _routesCollection;
 
   StreamSubscription<CompassEvent>? _compassStream;
 
@@ -100,6 +113,13 @@ class MapScreenState extends State<MapScreen> {
 
   bool get isTrackingActive => _isTracking;
   bool get isWorkoutFullscreen => _isTracking && !_isMinimized;
+
+  bool get _isMapReady =>
+      _mapWindow != null &&
+      _userLocationCollection != null &&
+      _routesCollection != null &&
+      _placemarksCollection != null &&
+      widget.isTabActive;
 
   late final pointImageProvider =
       image_provider.ImageProvider.fromImageProvider(
@@ -112,12 +132,21 @@ class MapScreenState extends State<MapScreen> {
   late final _inputListener = MapInputListenerImpl(
     onMapTapCallback: (_, __) {},
     onMapLongTapCallback: (map, point) {
-      if (_isTracking) return;
-      setState(() => _routePoints = [..._routePoints, point]);
-      if (_routePoints.length == 1) {
-        showSnackBar(context, 'Добавлена первая точка');
-      }
-      _onRouteParametersUpdated();
+      if (_isTracking || !_isMapReady) return;
+
+      _routePoints = [..._routePoints, point];
+      final isFirstPoint = _routePoints.length == 1;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (isFirstPoint) {
+          showSnackBar(context, 'Старт маршрута. Поставьте финишную точку');
+        } else if (_routePoints.length == 2) {
+          showSnackBar(context, 'Маршрут готов. Нажмите ▶ для старта тренировки');
+        }
+        setState(() {});
+        _onRouteParametersUpdated();
+      });
     },
   );
 
@@ -163,18 +192,33 @@ class MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _drivingRouter = DirectionsFactory.instance
         .createDrivingRouter(DrivingRouterType.Combined);
     _pedestrianRouter = TransportFactory.instance.createPedestrianRouter();
     _publicTransportRouter =
         TransportFactory.instance.createMasstransitRouter();
     _loadUserWeight();
+    _loadLocationMarkerIcon();
     _startLocationUpdates();
     _startCompassUpdates();
   }
 
+  Future<void> _loadLocationMarkerIcon() async {
+    final bytes = await MapLocationMarkerIcon.toPngBytes();
+    if (!mounted) return;
+
+    _locationMarkerProvider =
+        image_provider.ImageProvider.fromImageProvider(MemoryImage(bytes));
+
+    if (_isMapReady && _lastKnownPoint != null) {
+      _updateCurrentLocationMarker(_lastKnownPoint!, _lastKnownHeading);
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _positionStream?.cancel();
     _compassStream?.cancel();
     _tickTimer?.cancel();
@@ -235,9 +279,8 @@ class MapScreenState extends State<MapScreen> {
     );
   }
 
-  int get _steps =>
-      ActivityCalculator(weightKg: _userWeightKg)
-          .estimateStepsByDistance(_totalDistance);
+  int get _steps => ActivityCalculator(weightKg: _userWeightKg)
+      .estimateStepsByDistance(_totalDistance);
 
   int get _cadence {
     if (_elapsed.inMinutes <= 0) return 0;
@@ -247,10 +290,48 @@ class MapScreenState extends State<MapScreen> {
   void _startCompassUpdates() {
     _compassStream = FlutterCompass.events?.listen((event) {
       final heading = event.heading;
-      if (heading != null && heading.isFinite && _currentLocationPlacemark != null) {
+      if (heading != null &&
+          heading.isFinite &&
+          _isMapReady &&
+          _currentLocationPlacemark != null) {
         _currentLocationPlacemark!.direction = heading;
       }
     });
+  }
+
+  void _mutateState(VoidCallback fn) {
+    if (!_appInForeground || !mounted) {
+      fn();
+      return;
+    }
+
+    if (_isTracking) {
+      final now = DateTime.now();
+      if (_lastTrackingUiUpdate != null &&
+          now.difference(_lastTrackingUiUpdate!) < _trackingUiInterval) {
+        fn();
+        return;
+      }
+      _lastTrackingUiUpdate = now;
+    }
+
+    setState(fn);
+  }
+
+  @override
+  void didUpdateWidget(MapScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isTabActive && widget.isTabActive && _isMapReady) {
+      if (_lastKnownPoint != null) {
+        _updateCurrentLocationMarker(_lastKnownPoint!, _lastKnownHeading);
+      }
+      if (_isTracking) {
+        _redrawWorkoutRoutes();
+      }
+      if (_isTracking) {
+        setState(_updateElapsed);
+      }
+    }
   }
 
   void _startLocationUpdates() async {
@@ -267,18 +348,22 @@ class MapScreenState extends State<MapScreen> {
 
     _positionStream?.cancel();
     _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
+      locationSettings: LocationSettings(
         accuracy: LocationAccuracy.best,
-        distanceFilter: 2,
+        distanceFilter: _isTracking ? 2 : 8,
       ),
     ).listen((position) {
       final point =
           Point(latitude: position.latitude, longitude: position.longitude);
-      _updateCurrentLocationMarker(point, position.heading);
+      _lastKnownPoint = point;
+      _lastKnownHeading = position.heading;
+      if (_isMapReady) {
+        _updateCurrentLocationMarker(point, position.heading);
+      }
 
       if (!_isTracking) return;
 
-      setState(() {
+      _mutateState(() {
         _currentSpeedMs = position.speed >= 0 ? position.speed : 0;
         if (_currentSpeedMs > _maxSpeedMs) _maxSpeedMs = _currentSpeedMs;
 
@@ -291,34 +376,56 @@ class MapScreenState extends State<MapScreen> {
 
       if (_isManualPaused) return;
 
+      RouteProgressSnapshot? guidedProgress;
+      if (_isGuidedWorkout && _routeProgressTracker != null) {
+        guidedProgress = _routeProgressTracker!.update(
+          point.latitude,
+          point.longitude,
+        );
+      }
+
       final isStationary = position.speed < 0.3;
-      if (!isStationary &&
+      final shouldRecordPoint = !isStationary &&
           (_trackedRoutePoints.isEmpty ||
-              !_isSameLocation(_trackedRoutePoints.last, point))) {
-        setState(() {
-          if (_trackedRoutePoints.isNotEmpty) {
-            _totalDistance += Geolocator.distanceBetween(
-              _trackedRoutePoints.last.latitude,
-              _trackedRoutePoints.last.longitude,
-              point.latitude,
-              point.longitude,
+              !_isSameLocation(_trackedRoutePoints.last, point));
+
+      if (shouldRecordPoint || guidedProgress != null) {
+        _mutateState(() {
+          if (shouldRecordPoint) {
+            if (_trackedRoutePoints.isNotEmpty) {
+              _totalDistance += Geolocator.distanceBetween(
+                _trackedRoutePoints.last.latitude,
+                _trackedRoutePoints.last.longitude,
+                point.latitude,
+                point.longitude,
+              );
+            }
+            _trackedRoutePoints.add(
+              TrackPoint(
+                latitude: point.latitude,
+                longitude: point.longitude,
+                time: position.timestamp,
+                elevation: position.altitude,
+              ),
             );
           }
-          _trackedRoutePoints.add(
-            TrackPoint(
-              latitude: point.latitude,
-              longitude: point.longitude,
-              time: position.timestamp,
-              elevation: position.altitude,
-            ),
-          );
+
+          if (guidedProgress != null) {
+            _guidedRemainingM = guidedProgress.remainingMeters;
+            _guidedProgress = guidedProgress.progress;
+            _isOffRoute = guidedProgress.isOffRoute;
+          }
         });
-        _drawTrackingPolyline();
-        if (! _isMinimized) {
-          _mapWindow?.map.move(
-            CameraPosition(point, zoom: _mapZoom, azimuth: 0, tilt: 0),
-          );
+
+        if (shouldRecordPoint) {
+          _redrawWorkoutRoutes();
         }
+      }
+
+      if (shouldRecordPoint && _isMapReady && !_isMinimized) {
+        _mapWindow!.map.move(
+          CameraPosition(point, zoom: _mapZoom, azimuth: 0, tilt: 0),
+        );
       }
     });
   }
@@ -329,20 +436,24 @@ class MapScreenState extends State<MapScreen> {
   }
 
   void _updateCurrentLocationMarker(Point point, double? heading) {
+    final collection = _userLocationCollection;
+    final markerIcon = _locationMarkerProvider;
+    if (!_isMapReady || collection == null || markerIcon == null) return;
+
     if (_currentLocationPlacemark != null) {
-      _userLocationCollection.remove(_currentLocationPlacemark!);
+      collection.remove(_currentLocationPlacemark!);
     }
 
     final direction = (heading != null && heading.isFinite) ? heading : 0.0;
 
-    _currentLocationPlacemark = _userLocationCollection.addPlacemark()
+    _currentLocationPlacemark = collection.addPlacemark()
       ..geometry = point
       ..direction = direction;
 
     _currentLocationPlacemark!
-      ..setIcon(_arrowImageProvider)
+      ..setIcon(markerIcon)
       ..setIconStyle(const IconStyle(
-        scale: 0.12,
+        scale: 0.14,
         rotationType: RotationType.Rotate,
         anchor: math.Point(0.5, 0.5),
         zIndex: 100,
@@ -350,23 +461,78 @@ class MapScreenState extends State<MapScreen> {
     _currentLocationPlacemark!.visible = true;
   }
 
-  void _drawTrackingPolyline() {
-    _routesCollection.clear();
+  List<Point> _getActivePlannedRoutePoints() {
+    Polyline? geometry;
+    switch (_currentRoutingType) {
+      case RoutingType.driving:
+        if (_drivingRoutes.isNotEmpty) {
+          geometry = _drivingRoutes.first.geometry;
+        }
+        break;
+      case RoutingType.pedestrian:
+        if (_pedestrianRoutes.isNotEmpty) {
+          geometry = _pedestrianRoutes.first.geometry;
+        }
+        break;
+      case RoutingType.publicTransport:
+        if (_publicTransportRoutes.isNotEmpty) {
+          geometry = _publicTransportRoutes.first.geometry;
+        }
+        break;
+    }
+
+    if (geometry != null && geometry.points.isNotEmpty) {
+      return List<Point>.from(geometry.points);
+    }
+
+    if (_routePoints.length >= 2) {
+      return List<Point>.from(_routePoints);
+    }
+
+    return const [];
+  }
+
+  void _redrawWorkoutRoutes() {
+    final routes = _routesCollection;
+    if (!_isMapReady || routes == null) return;
+    routes.clear();
+
+    if (_isGuidedWorkout && _routeProgressTracker != null) {
+      final planned = Polyline(_routeProgressTracker!.pathPoints);
+      routes.addPolylineWithGeometry(planned).applyMainRouteStyle();
+    }
+
     if (_trackedRoutePoints.length < 2) return;
-    final polyline = Polyline(
+
+    final tracked = Polyline(
       _trackedRoutePoints
           .map((p) => Point(latitude: p.latitude, longitude: p.longitude))
           .toList(),
     );
-    final mapPolyline = _routesCollection.addPolylineWithGeometry(polyline);
-    mapPolyline.applyMainRouteStyle();
+    routes.addPolylineWithGeometry(tracked).applyTrackedWorkoutPathStyle();
   }
 
   void startTracking() => _startTracking();
 
   void _startTracking() {
+    final plannedPoints = _getActivePlannedRoutePoints();
+    if (plannedPoints.length < 2) {
+      showSnackBar(
+        context,
+        'Поставьте две точки на карте и дождитесь построения маршрута',
+      );
+      return;
+    }
+
+    final tracker = RouteProgressTracker(plannedPoints);
+
     setState(() {
       _isTracking = true;
+      _isGuidedWorkout = true;
+      _routeProgressTracker = tracker;
+      _guidedRemainingM = tracker.totalMeters;
+      _guidedProgress = 0;
+      _isOffRoute = false;
       _isMinimized = false;
       _isLocked = false;
       _isManualPaused = false;
@@ -384,8 +550,12 @@ class MapScreenState extends State<MapScreen> {
     _tickTimer?.cancel();
     _tickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || !_isTracking) return;
-      setState(_updateElapsed);
+      _updateElapsed();
+      if (widget.isTabActive && _appInForeground) {
+        setState(() {});
+      }
     });
+    _redrawWorkoutRoutes();
     _notifyWorkoutUi();
   }
 
@@ -399,6 +569,26 @@ class MapScreenState extends State<MapScreen> {
     if (!_isTracking) return;
     setState(() => _isMinimized = false);
     _notifyWorkoutUi();
+  }
+
+  void handleAppLifecycleResume() {
+    if (!mounted) return;
+    setState(() {});
+    _notifyWorkoutUi();
+    if (_lastKnownPoint != null) {
+      _updateCurrentLocationMarker(_lastKnownPoint!, _lastKnownHeading);
+    }
+    if (_isTracking) {
+      _redrawWorkoutRoutes();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appInForeground = state == AppLifecycleState.resumed;
+    if (_appInForeground) {
+      handleAppLifecycleResume();
+    }
   }
 
   WorkoutSessionData _buildSessionData() {
@@ -423,6 +613,11 @@ class MapScreenState extends State<MapScreen> {
 
     setState(() {
       _isTracking = false;
+      _isGuidedWorkout = false;
+      _routeProgressTracker = null;
+      _guidedRemainingM = 0;
+      _guidedProgress = 0;
+      _isOffRoute = false;
       _isMinimized = false;
       _isLocked = false;
       _isManualPaused = false;
@@ -451,7 +646,7 @@ class MapScreenState extends State<MapScreen> {
       _trackedRoutePoints.clear();
       _totalDistance = 0;
       _elapsed = Duration.zero;
-      _routesCollection.clear();
+      _routesCollection?.clear();
     });
   }
 
@@ -500,96 +695,134 @@ class MapScreenState extends State<MapScreen> {
         setState(() => _routePoints = points);
         _onRouteParametersUpdated();
       });
+    } else if (_routePoints.isNotEmpty) {
+      _onRouteParametersUpdated();
+    }
+
+    if (_isTracking) {
+      _redrawWorkoutRoutes();
+    }
+
+    if (_lastKnownPoint != null) {
+      _updateCurrentLocationMarker(_lastKnownPoint!, _lastKnownHeading);
     }
   }
 
   void _onRouteParametersUpdated() {
-    _placemarksCollection.clear();
-    if (!_isTracking) _routesCollection.clear();
+    if (!_isMapReady) return;
+
+    final placemarks = _placemarksCollection;
+    final routes = _routesCollection;
+    if (placemarks == null || routes == null) return;
 
     _drivingSession?.cancel();
     _pedestrianSession?.cancel();
     _publicTransportSession?.cancel();
+    _drivingSession = null;
+    _pedestrianSession = null;
+    _publicTransportSession = null;
+
+    placemarks.clear();
+    if (!_isTracking) routes.clear();
 
     if (_routePoints.isEmpty) return;
 
     _routePoints.forEachIndexed((index, point) {
-      final placemark = _placemarksCollection.addPlacemark()..geometry = point;
-      placemark.setIcon(index == _routePoints.length - 1
-          ? finishPointImageProvider
-          : pointImageProvider);
+      final isFinish = index == _routePoints.length - 1;
+      final placemark = placemarks.addPlacemark()..geometry = point;
+      placemark.setIcon(
+        isFinish ? finishPointImageProvider : pointImageProvider,
+      );
       placemark.setIconStyle(IconStyle(
-        scale: index == _routePoints.length - 1 ? 1.5 : 1.0,
+        scale: isFinish ? 1.5 : 1.0,
         zIndex: 20.0,
       ));
     });
 
     if (_routePoints.length < 2) return;
 
-    final points = [
+    final points = <RequestPoint>[
       RequestPoint(
-          _routePoints.first, RequestPointType.Waypoint, null, null, null),
-      ..._routePoints.sublist(1, _routePoints.length - 1).map(
-            (p) => RequestPoint(p, RequestPointType.Viapoint, null, null, null),
-          ),
+        _routePoints.first,
+        RequestPointType.Waypoint,
+        null,
+        null,
+        null,
+      ),
+      ..._routePoints
+          .sublist(1, _routePoints.length - 1)
+          .map((p) => RequestPoint(p, RequestPointType.Viapoint, null, null, null)),
       RequestPoint(
-          _routePoints.last, RequestPointType.Waypoint, null, null, null),
+        _routePoints.last,
+        RequestPointType.Waypoint,
+        null,
+        null,
+        null,
+      ),
     ];
 
-    switch (_currentRoutingType) {
-      case RoutingType.driving:
-        _drivingSession = _drivingRouter.requestRoutes(
-          const DrivingOptions(routesCount: 3),
-          const DrivingVehicleOptions(),
-          _drivingRouteListener,
-          points: points,
-        );
-        break;
-      case RoutingType.pedestrian:
-        _pedestrianSession = _pedestrianRouter.requestRoutes(
-          const TimeOptions(),
-          const RouteOptions(FitnessOptions(avoidSteep: false)),
-          _pedestrianRouteListener,
-          points: points,
-        );
-        break;
-      case RoutingType.publicTransport:
-        _publicTransportSession = _publicTransportRouter.requestRoutes(
-          const TransitOptions(TimeOptions()),
-          const RouteOptions(FitnessOptions(avoidSteep: false)),
-          _publicTransportRouteListener,
-          points: points,
-        );
-        break;
+    try {
+      switch (_currentRoutingType) {
+        case RoutingType.driving:
+          _drivingSession = _drivingRouter.requestRoutes(
+            const DrivingOptions(routesCount: 3),
+            const DrivingVehicleOptions(),
+            _drivingRouteListener,
+            points: points,
+          );
+          break;
+        case RoutingType.pedestrian:
+          _pedestrianSession = _pedestrianRouter.requestRoutes(
+            const TimeOptions(),
+            const RouteOptions(FitnessOptions(avoidSteep: false)),
+            _pedestrianRouteListener,
+            points: points,
+          );
+          break;
+        case RoutingType.publicTransport:
+          _publicTransportSession = _publicTransportRouter.requestRoutes(
+            const TransitOptions(TimeOptions()),
+            const RouteOptions(FitnessOptions(avoidSteep: false)),
+            _publicTransportRouteListener,
+            points: points,
+          );
+          break;
+      }
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(context, 'Не удалось построить маршрут');
+      }
     }
   }
 
   void _onDrivingRoutesUpdated() {
-    if (_isTracking) return;
-    _routesCollection.clear();
+    if (_isTracking || !_isMapReady) return;
+    _routesCollection!.clear();
     for (var i = 0; i < _drivingRoutes.length; i++) {
       _createPolylineWithStyle(i, _drivingRoutes[i].geometry);
     }
   }
 
   void _onPedestrianRoutesUpdated() {
-    if (_isTracking) return;
-    _routesCollection.clear();
+    if (_isTracking || !_isMapReady) return;
+    _routesCollection!.clear();
     for (var i = 0; i < _pedestrianRoutes.length; i++) {
       _createPolylineWithStyle(i, _pedestrianRoutes[i].geometry);
     }
   }
 
   void _onPublicTransportRoutesUpdated() {
-    if (_isTracking) return;
-    _routesCollection.clear();
+    if (_isTracking || !_isMapReady) return;
+    _routesCollection!.clear();
     for (var i = 0; i < _publicTransportRoutes.length; i++) {
       _createPolylineWithStyle(i, _publicTransportRoutes[i].geometry);
     }
   }
 
   void _createPolylineWithStyle(int routeIndex, Polyline geometry) {
-    final polyline = _routesCollection.addPolylineWithGeometry(geometry);
+    final routes = _routesCollection;
+    if (routes == null) return;
+    final polyline = routes.addPolylineWithGeometry(geometry);
     routeIndex == 0
         ? polyline.applyMainRouteStyle()
         : polyline.applyAlternativeRouteStyle();
@@ -638,15 +871,27 @@ class MapScreenState extends State<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final showWorkoutUi = _isTracking && !_isMinimized;
+    final showWorkoutUi = widget.isTabActive && _isTracking && !_isMinimized;
     final bottomPad = showWorkoutUi ? 0.0 : widget.bottomNavPadding;
 
     return Stack(
+      fit: StackFit.expand,
       children: [
-        FlutterMapWidget(
-          onMapCreated: _createMapObjects,
-          onMapDispose: () =>
-              _mapWindow?.map.removeInputListener(_inputListener),
+        Offstage(
+          offstage: !widget.isTabActive,
+          child: RepaintBoundary(
+            child: FlutterMapWidget(
+              onMapCreated: _createMapObjects,
+              onMapDispose: () {
+                _mapWindow?.map.removeInputListener(_inputListener);
+                _mapWindow = null;
+                _userLocationCollection = null;
+                _placemarksCollection = null;
+                _routesCollection = null;
+                _currentLocationPlacemark = null;
+              },
+            ),
+          ),
         ),
         if (showWorkoutUi)
           Positioned.fill(
@@ -656,7 +901,7 @@ class MapScreenState extends State<MapScreen> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withValues(alpha: 0.15),
+                    const Color.fromARGB(255, 0, 0, 0).withValues(alpha: 0.15),
                     Colors.transparent,
                     Colors.black.withValues(alpha: 0.35),
                   ],
@@ -664,7 +909,7 @@ class MapScreenState extends State<MapScreen> {
               ),
             ),
           ),
-        if (!_isTracking)
+        if (widget.isTabActive && !_isTracking)
           MapIdleOverlay(
             selectedActivity: _selectedActivity,
             onActivitySelected: (t) => setState(() => _selectedActivity = t),
@@ -688,7 +933,7 @@ class MapScreenState extends State<MapScreen> {
             onSaveRoute: _saveRouteQuick,
             bottomPadding: bottomPad,
           )
-        else if (_isMinimized)
+        else if (widget.isTabActive && _isMinimized)
           Positioned(
             left: 16,
             right: 16,
@@ -701,10 +946,12 @@ class MapScreenState extends State<MapScreen> {
                 borderRadius: BorderRadius.circular(16),
                 onTap: expandWorkout,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Row(
                     children: [
-                      Icon(_selectedActivity.icon, color: MapUiColors.primaryGreen),
+                      Icon(_selectedActivity.icon,
+                          color: MapUiColors.primaryGreen),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
@@ -715,7 +962,9 @@ class MapScreenState extends State<MapScreen> {
                               style: mapMetricValueStyle(size: 18),
                             ),
                             Text(
-                              '${formatDistanceKm(_totalDistance)} км • ${_currentSpeedKmh.toStringAsFixed(1)} км/ч',
+                              _isGuidedWorkout
+                                  ? 'Осталось ${formatDistanceKm(_guidedRemainingM)} км • ${_currentSpeedKmh.toStringAsFixed(1)} км/ч'
+                                  : '${formatDistanceKm(_totalDistance)} км • ${_currentSpeedKmh.toStringAsFixed(1)} км/ч',
                               style: mapMetricLabelStyle(),
                             ),
                           ],
@@ -736,6 +985,10 @@ class MapScreenState extends State<MapScreen> {
             calories: _calories,
             elevationM: _elevationGainM,
             motionStatus: _motionStatus,
+            isGuided: _isGuidedWorkout,
+            routeRemainingKm: _guidedRemainingM / 1000,
+            routeProgress: _guidedProgress,
+            isOffRoute: _isOffRoute,
             isLocked: _isLocked,
             isManualPaused: _isManualPaused,
             onStop: _finishWorkout,

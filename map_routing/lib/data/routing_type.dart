@@ -1,6 +1,6 @@
 enum RoutingType {
-  driving(purpose: "Водитель"),
   pedestrian(purpose: "Пешеход"),
+  driving(purpose: "Водитель"),
   publicTransport(purpose: "Публичный транспорт");
 
   final String purpose;

@@ -8,6 +8,7 @@ class Friendship(db.Model):
     friend_id = db.Column(db.Integer, db.ForeignKey('users.id_User'))
     status = db.Column(db.String(20), default='pending')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    viewed_at = db.Column(db.DateTime, nullable=True)
 
     def __repr__(self):
         return f'<Friendship {self.id}: {self.user_id} - {self.friend_id}>'

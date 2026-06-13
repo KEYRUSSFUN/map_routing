@@ -46,12 +46,6 @@ class MapIdleOverlay extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  _CircleTool(
-                    icon: Icons.arrow_back_ios_new_rounded,
-                    onTap: () {},
-                    size: 40,
-                  ),
-                  const SizedBox(width: 8),
                   Expanded(
                     child: Container(
                       height: 48,
@@ -106,7 +100,7 @@ class MapIdleOverlay extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 14),
                         decoration: BoxDecoration(
                           color: selected
-                              ? MapUiColors.primaryGreen.withValues(alpha: 0.15)
+                              ? MapUiColors.primaryGreen.withValues(alpha: 0.60)
                               : Colors.white.withValues(alpha: 0.92),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
@@ -117,7 +111,9 @@ class MapIdleOverlay extends StatelessWidget {
                         ),
                         child: Row(
                           children: [
-                            Icon(type.icon, size: 18, color: MapUiColors.title),
+                            Icon(type.icon,
+                                size: 18,
+                                color: const Color.fromARGB(255, 0, 0, 0)),
                             const SizedBox(width: 6),
                             Text(type.labelRu, style: mapChipLabelStyle()),
                           ],
@@ -158,48 +154,13 @@ class MapIdleOverlay extends StatelessWidget {
         Positioned(
           left: 0,
           right: 0,
-          bottom: bottomPadding + 72,
+          bottom: bottomPadding + 0,
           child: Center(
             child: _CircleTool(
               icon: Icons.my_location_rounded,
               onTap: onCenterLocation,
               iconColor: MapUiColors.primaryGreen,
               size: 52,
-            ),
-          ),
-        ),
-        Positioned(
-          left: 20,
-          right: 20,
-          bottom: bottomPadding + 8,
-          child: Material(
-            color: MapUiColors.primaryGreen,
-            borderRadius: BorderRadius.circular(28),
-            elevation: 6,
-            shadowColor: MapUiColors.primaryGreen.withValues(alpha: 0.45),
-            child: InkWell(
-              onTap: onStartWorkout,
-              borderRadius: BorderRadius.circular(28),
-              child: SizedBox(
-                height: 56,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.play_arrow_rounded,
-                        color: MapUiColors.title, size: 28),
-                    const SizedBox(width: 8),
-                    Text(
-                      'НАЧАТЬ ТРЕНИРОВКУ',
-                      style: GoogleFonts.lexendDeca(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: MapUiColors.title,
-                        letterSpacing: 0.3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
           ),
         ),
@@ -234,7 +195,8 @@ class _CircleTool extends StatelessWidget {
         child: SizedBox(
           width: size,
           height: size,
-          child: Icon(icon, color: iconColor ?? MapUiColors.title, size: 22),
+          child: Icon(icon,
+              color: iconColor ?? const Color.fromARGB(255, 0, 0, 0), size: 22),
         ),
       ),
     );

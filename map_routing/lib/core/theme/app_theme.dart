@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
+  static const primaryGreen = Color(0xFF00E676);
+
   static ThemeData get lightTheme {
     return ThemeData(
       primaryColor: const Color(0xFF3490DE),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: primaryGreen,
+      ),
       scaffoldBackgroundColor: Colors.white,
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,

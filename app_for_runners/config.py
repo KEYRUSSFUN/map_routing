@@ -26,3 +26,13 @@ class Config:
         'pool_recycle': 300,
     }
     CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '*')
+    AVATAR_UPLOAD_FOLDER = os.path.join(
+        os.path.dirname(__file__), 'static', 'uploads', 'avatars'
+    )
+    MAX_AVATAR_SIZE = 5 * 1024 * 1024
+    ALLOWED_AVATAR_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
+    ROUTE_SHARE_UPLOAD_FOLDER = os.path.join(
+        os.path.dirname(__file__), 'static', 'uploads', 'route_shares'
+    )
+    MAX_ROUTE_SHARE_SIZE = 15 * 1024 * 1024
+    ALLOWED_ROUTE_SHARE_EXTENSIONS = {'gpx'}

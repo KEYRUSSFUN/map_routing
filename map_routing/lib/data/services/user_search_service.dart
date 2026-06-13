@@ -10,41 +10,31 @@ class UserSearchService {
       : baseUrl = baseUrl ?? backendBaseUrl;
 
   Future<List<Map<String, dynamic>>> searchUsers(String query) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/api/users/search?name=$query'),
-        headers: {'Authorization': token, 'Content-Type': 'application/json'},
-      );
+    final encodedQuery = Uri.encodeQueryComponent(query);
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/users/search?name=$encodedQuery'),
+      headers: {'Authorization': token, 'Content-Type': 'application/json'},
+    );
 
-      print(
-          'Response for "$query": status=${response.statusCode}, body=${response.body}');
-
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-        if (decoded is! List) {
-          print('Unexpected response format: $decoded');
-          return [];
-        }
-        final List<dynamic> data = decoded;
-        return data.map((item) {
-          if (item is! Map<String, dynamic> ||
-              !item.containsKey('id') ||
-              !item.containsKey('name')) {
-            print('Invalid user data for "$query": $item');
-            return {'id': '0', 'name': 'Unknown'};
-          }
-          return Map<String, dynamic>.from(item);
-        }).toList();
-      } else if (response.statusCode == 500) {
-        print('Server error for "$query": ${response.body}');
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) {
         return [];
-      } else {
-        throw Exception(
-            'Failed to search users: ${response.statusCode} - ${response.body}');
       }
-    } catch (e) {
-      print('Search error for "$query": $e');
+
+      return decoded
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .where((item) => item['id'] != null && item['name'] != null)
+          .toList();
+    }
+
+    if (response.statusCode == 500) {
       return [];
     }
+
+    throw Exception(
+      'Failed to search users: ${response.statusCode} - ${response.body}',
+    );
   }
 }

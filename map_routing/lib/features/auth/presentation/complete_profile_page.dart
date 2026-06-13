@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:map_routing/core/network/config.dart';
 import 'package:map_routing/features/auth/data/auth_local_storage.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
+import 'package:map_routing/shared/data/countries.dart';
 
 class CompleteProfilePage extends StatefulWidget {
   final String token;
@@ -27,9 +28,9 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
   final TextEditingController _weightController = TextEditingController();
   final TextEditingController _heightController = TextEditingController();
   final TextEditingController _ageController = TextEditingController();
-  final TextEditingController _countryController = TextEditingController();
 
   String _sex = 'male';
+  String _country = '';
   bool _isLoading = false;
 
   @override
@@ -52,11 +53,11 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
 
     final body = {
       'name': _nameController.text.trim(),
-      'weight': _weightController.text.trim(),
-      'height': _heightController.text.trim(),
+      'weight': double.parse(_weightController.text.trim()),
+      'height': double.parse(_heightController.text.trim()),
       'sex': _sex,
-      'age': _ageController.text.trim(),
-      'country': _countryController.text.trim(),
+      'age': int.parse(_ageController.text.trim()),
+      'country': _country,
     };
 
     final response = await http.post(
@@ -89,7 +90,6 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
     _weightController.dispose();
     _heightController.dispose();
     _ageController.dispose();
-    _countryController.dispose();
     super.dispose();
   }
 
@@ -172,13 +172,14 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
                       value == null || value.isEmpty ? 'Введите возраст' : null,
                 ),
                 const SizedBox(height: 16),
-                AuthTextField(
+                AuthDropdownField<String>(
                   label: 'Страна',
-                  controller: _countryController,
-                  hint: 'Россия',
-                  prefixIcon: Icons.public_outlined,
+                  value: _country,
+                  items: buildCountryDropdownItems(popularCountries),
+                  onChanged: (value) =>
+                      setState(() => _country = value ?? ''),
                   validator: (value) =>
-                      value == null || value.isEmpty ? 'Введите страну' : null,
+                      value == null || value.isEmpty ? 'Выберите страну' : null,
                 ),
                 const SizedBox(height: 24),
                 AuthPrimaryButton(

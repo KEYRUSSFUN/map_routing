@@ -1,3 +1,5 @@
+import os
+
 from flask import Flask
 
 from config import Config
@@ -8,6 +10,8 @@ from swagger_docs import create_swagger_blueprint
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
+    os.makedirs(app.config['AVATAR_UPLOAD_FOLDER'], exist_ok=True)
+    os.makedirs(app.config['ROUTE_SHARE_UPLOAD_FOLDER'], exist_ok=True)
 
     socketio = init_extensions(app)
 

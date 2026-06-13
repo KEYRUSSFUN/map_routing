@@ -20,10 +20,11 @@ class StatisticsService {
   DateTime? _lastFetchTime;
   final Duration cacheDuration = Duration(minutes: 1);
 
-  Future<List<dynamic>> _fetchStats() async {
+  Future<List<dynamic>> _fetchStats({String? userId}) async {
     final now = DateTime.now();
 
-    if (_cachedStats != null &&
+    if (userId == null &&
+        _cachedStats != null &&
         _lastFetchTime != null &&
         now.difference(_lastFetchTime!) < cacheDuration) {
       return _cachedStats!;
@@ -32,22 +33,29 @@ class StatisticsService {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('jwt_token');
 
+    final url = userId == null
+        ? '$backendBaseUrl/api/user_statistic'
+        : '$backendBaseUrl/api/user_statistic/$userId';
+
     final response = await http.get(
-      Uri.parse('$backendBaseUrl/api/user_statistic'),
+      Uri.parse(url),
       headers: {'Authorization': token ?? ''},
     );
 
     if (response.statusCode == 200) {
-      _cachedStats = json.decode(response.body);
-      _lastFetchTime = now;
-      return _cachedStats!;
+      final stats = json.decode(response.body) as List<dynamic>;
+      if (userId == null) {
+        _cachedStats = stats;
+        _lastFetchTime = now;
+      }
+      return stats;
     } else {
       throw Exception('Не удалось загрузить данные активности');
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchWeeklyStats() async {
-    final stats = await _fetchStats();
+  Future<List<Map<String, dynamic>>> fetchWeeklyStats({String? userId}) async {
+    final stats = await _fetchStats(userId: userId);
 
     final now = DateTime.now();
     final last7Days = List.generate(7, (i) {
@@ -74,8 +82,8 @@ class StatisticsService {
     return last7Days.map((d) => dayStats[d]!).toList();
   }
 
-  Future<WeeklySummary> fetchAllWeeklyStats() async {
-    final weeklyStats = await fetchWeeklyStats();
+  Future<WeeklySummary> fetchAllWeeklyStats({String? userId}) async {
+    final weeklyStats = await fetchWeeklyStats(userId: userId);
 
     final distanceMeters = weeklyStats.fold<double>(
         0.0, (sum, day) => sum + (day['distance'] as double));
@@ -92,8 +100,8 @@ class StatisticsService {
   }
 
   /// Процент изменения дистанции: последние 7 дней vs предыдущие 7 дней.
-  Future<double?> fetchWeekOverWeekChangePercent() async {
-    final stats = await _fetchStats();
+  Future<double?> fetchWeekOverWeekChangePercent({String? userId}) async {
+    final stats = await _fetchStats(userId: userId);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 

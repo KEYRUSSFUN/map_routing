@@ -33,7 +33,7 @@ final class FlutterMapWidgetState extends State<FlutterMapWidget> {
       right: false,
       child: YandexMap(
         onMapCreated: _onMapCreated,
-        platformViewType: PlatformViewType.Hybrid,
+        platformViewType: PlatformViewType.Compat,
       ),
     );
   }
@@ -44,22 +44,29 @@ final class FlutterMapWidgetState extends State<FlutterMapWidget> {
     _startMapkit();
 
     _lifecycleListener = AppLifecycleListener(
-      onResume: () {
-        _startMapkit();
-        _setMapTheme();
-      },
-      onInactive: () {
-        _stopMapkit();
-      },
+      onResume: _handleResume,
+      onPause: _handlePause,
     );
   }
 
   @override
   void dispose() {
-    _stopMapkit();
+    _handlePause();
     _lifecycleListener.dispose();
     widget.onMapDispose?.call();
     super.dispose();
+  }
+
+  void _handleResume() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _startMapkit();
+      _setMapTheme();
+    });
+  }
+
+  void _handlePause() {
+    _stopMapkit();
   }
 
   void _startMapkit() {

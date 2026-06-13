@@ -8,6 +8,8 @@ class UserInfo(db.Model):
     height = db.Column(db.Float, nullable=False)
     sex = db.Column(db.String(10), nullable=False)
     Age = db.Column(db.Integer, nullable=False)
-    # Country = db.Column(db.String(30), nullable=False)
+    country = db.Column(db.String(100), nullable=True)
+    avatar_filename = db.Column(db.String(255), nullable=True)
+    avatar_updated_at = db.Column(db.DateTime, nullable=True)
 
     user = db.relationship("User", back_populates="user_info")

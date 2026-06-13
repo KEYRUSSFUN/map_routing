@@ -42,7 +42,7 @@ class TrackingButton extends StatelessWidget {
         ),
         child: Icon(
           isTracking ? Icons.stop : Icons.play_arrow,
-          color: const Color.fromARGB(255, 44, 44, 44),
+          color: const Color.fromARGB(255, 255, 255, 255),
           size: 36,
         ),
       ),

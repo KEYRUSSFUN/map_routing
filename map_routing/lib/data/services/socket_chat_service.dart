@@ -19,10 +19,10 @@ class SocketChatService {
       throw Exception('Токен не найден. Пожалуйста, войдите в систему');
     }
 
-    print('[SocketChatService] Инициализация сокета с токеном: $_token');
+    print('[SocketChatService] Инициализация сокета');
 
     _socket = IO.io(baseUrl, <String, dynamic>{
-      'transports': ['websocket'],
+      'transports': ['websocket', 'polling'],
       'extraHeaders': {'Authorization': '$_token'},
       'autoConnect': false,
     });

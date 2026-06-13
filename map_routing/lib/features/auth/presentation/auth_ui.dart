@@ -253,7 +253,7 @@ class AuthPrimaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: 50,
+      height: 52,
       child: ElevatedButton(
         onPressed: isLoading ? null : onPressed,
         style: ElevatedButton.styleFrom(
@@ -262,6 +262,7 @@ class AuthPrimaryButton extends StatelessWidget {
           disabledBackgroundColor:
               AuthColors.primaryGreen.withValues(alpha: 0.6),
           elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -275,7 +276,10 @@ class AuthPrimaryButton extends StatelessWidget {
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
               )
-            : Text(label, style: authButtonStyle()),
+            : Text(
+                label,
+                style: authButtonStyle().copyWith(height: 1.2),
+              ),
       ),
     );
   }

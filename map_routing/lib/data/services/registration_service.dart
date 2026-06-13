@@ -89,9 +89,9 @@ class RegistrationService {
     );
 
     if (response.statusCode == 201) {
-      print("✅ Статистика успешно отправлена");
+      print("Статистика успешно отправлена");
     } else {
-      print("❌ Ошибка: ${response.statusCode} ${response.body}");
+      print("Ошибка: ${response.statusCode} ${response.body}");
     }
   }
 }

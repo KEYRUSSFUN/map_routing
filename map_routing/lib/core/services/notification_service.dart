@@ -69,4 +69,9 @@ class NotificationService {
       }
     }
   }
+
+  Future<void> cancelAll() async {
+    if (!_initialized) return;
+    await _plugin.cancelAll();
+  }
 }

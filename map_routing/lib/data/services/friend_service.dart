@@ -21,9 +21,9 @@ class FriendService {
       return data
           .map((json) => Friend(
                 id: json['id'].toString(),
-                avatarUrl: 'https://i.pravatar.cc/100?img=${json['id']}',
+                avatarUrl: json['avatar_url']?.toString(),
                 isOnline: false,
-                name: json['name'].toString(),
+                name: json['name']?.toString() ?? 'Пользователь',
               ))
           .toList();
     } else {
@@ -39,7 +39,14 @@ class FriendService {
     );
 
     if (response.statusCode != 201) {
-      throw Exception('Failed to send friend request: ${response.statusCode}');
+      String message = 'Failed to send friend request: ${response.statusCode}';
+      try {
+        final data = jsonDecode(response.body);
+        if (data is Map && data['error'] != null) {
+          message = data['error'].toString();
+        }
+      } catch (_) {}
+      throw Exception(message);
     }
   }
 
@@ -50,17 +57,62 @@ class FriendService {
     );
 
     if (response.statusCode == 200) {
-      final List<dynamic> data = jsonDecode(response.body);
-      return data
-          .map((json) => {
-                'id': json['id'].toString(),
-                'fromUserId': json['fromUserId'].toString(),
-                'fromUserName': json['fromUserName'] as String? ??
-                    'Неизвестный пользователь',
-              })
-          .toList();
+      final data = jsonDecode(response.body);
+      if (data is Map<String, dynamic> && data['requests'] is List) {
+        return (data['requests'] as List)
+            .map((json) => {
+                  'id': json['id'].toString(),
+                  'fromUserId': json['fromUserId'].toString(),
+                  'fromUserName': json['fromUserName'] as String? ??
+                      'Неизвестный пользователь',
+                  'isUnread': json['isUnread'] == true,
+                })
+            .toList();
+      }
+
+      if (data is List) {
+        return data
+            .map((json) => {
+                  'id': json['id'].toString(),
+                  'fromUserId': json['fromUserId'].toString(),
+                  'fromUserName': json['fromUserName'] as String? ??
+                      'Неизвестный пользователь',
+                  'isUnread': json['isUnread'] == true,
+                })
+            .toList();
+      }
+
+      return [];
     } else {
       throw Exception('Failed to load friend requests: ${response.statusCode}');
+    }
+  }
+
+  Future<int> fetchUnreadFriendRequestsCount() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/friends/requests'),
+      headers: {'Authorization': token},
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data is Map<String, dynamic>) {
+        return (data['unreadCount'] as num?)?.toInt() ?? 0;
+      }
+      return 0;
+    }
+    throw Exception('Failed to load friend requests: ${response.statusCode}');
+  }
+
+  Future<void> markFriendRequestsSeen() async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/friends/requests/mark_seen'),
+      headers: {'Authorization': token, 'Content-Type': 'application/json'},
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Failed to mark friend requests as seen: ${response.statusCode}');
     }
   }
 

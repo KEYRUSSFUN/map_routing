@@ -5,12 +5,16 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:map_routing/core/network/config.dart';
 import 'package:map_routing/core/services/notification_service.dart';
+import 'package:map_routing/data/models/chat_participant.dart';
+import 'package:map_routing/data/services/chat_route_service.dart';
 import 'package:map_routing/data/services/group_service.dart';
 import 'package:map_routing/data/services/socket_chat_service.dart';
 import 'package:map_routing/data/services/user_service.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
 import 'package:map_routing/features/chat/widgets/attach_route_dialog.dart';
-import 'package:map_routing/features/profile/presentation/user_profile_page.dart';
+import 'package:map_routing/features/chat/widgets/chat_participants_sheet.dart';
+import 'package:map_routing/features/chat/widgets/chat_message_reactions.dart';
+import 'package:map_routing/features/chat/widgets/chat_route_message_bubble.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final RouteObserver<PageRoute> chatRouteObserver = RouteObserver<PageRoute>();
@@ -39,9 +43,10 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
   String? _currentUserName;
 
   String _chatTitle = '';
-  List<_ChatParticipant> _participants = [];
+  int? _creatorId;
+  String? _creatorName;
+  List<ChatParticipant> _participants = [];
   List<Map<String, dynamic>> _messages = [];
-  final Map<String, String> _reactions = {};
 
   Map<String, dynamic>? _replyTo;
   int _localCounter = 0;
@@ -49,6 +54,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
   bool _isLoading = true;
   bool _isSending = false;
   int _newIncomingCount = 0;
+  final Set<String> _downloadingRouteKeys = {};
 
   @override
   void initState() {
@@ -134,14 +140,19 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
     required dynamic content,
     required dynamic timestamp,
     String? localId,
+    dynamic id,
+    dynamic messageType,
+    dynamic routeShare,
+    dynamic reactions,
   }) {
+    final type = (messageType ?? 'text').toString();
     final text = (content ?? '').toString();
 
     String? replySender;
     String? replyText;
     var plainText = text;
 
-    if (text.startsWith('↪ ') && text.contains('\n')) {
+    if (type == 'text' && text.startsWith('↪ ') && text.contains('\n')) {
       final parts = text.split('\n');
       final meta = parts.first;
       final idx = meta.indexOf(':');
@@ -153,14 +164,66 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
     }
 
     return {
+      if (id != null) 'id': id,
       'local_id': localId ?? _nextLocalId(),
       'sender_id': senderId?.toString() ?? 'unknown',
       'sender': sender?.toString() ?? 'Неизвестный пользователь',
       'content': plainText,
+      'message_type': type,
       'timestamp': timestamp?.toString() ?? DateTime.now().toIso8601String(),
       'reply_to_sender': replySender,
       'reply_to_text': replyText,
+      if (routeShare is Map) 'route_share': Map<String, dynamic>.from(routeShare),
+      'reactions': _parseReactions(reactions),
     };
+  }
+
+  List<Map<String, dynamic>> _parseReactions(dynamic raw) {
+    if (raw is! List) return [];
+    return raw
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  void _updateMessageReactions(
+    dynamic messageId,
+    List<Map<String, dynamic>> reactions,
+  ) {
+    final idStr = messageId.toString();
+    setState(() {
+      final index =
+          _messages.indexWhere((m) => m['id']?.toString() == idStr);
+      if (index < 0) return;
+      _messages[index] = {
+        ..._messages[index],
+        'reactions': reactions,
+      };
+    });
+  }
+
+  bool _isRouteMessage(Map<String, dynamic> message) {
+    return message['message_type']?.toString() == 'route' &&
+        message['route_share'] is Map;
+  }
+
+  String _routeDownloadKey(Map<String, dynamic> message) {
+    final share = message['route_share'] as Map;
+    return share['id']?.toString() ?? message['local_id'].toString();
+  }
+
+  void _removeMessageFromList(dynamic messageId, {String? localId}) {
+    setState(() {
+      _messages.removeWhere((m) {
+        if (messageId != null && m['id']?.toString() == messageId.toString()) {
+          return true;
+        }
+        if (localId != null && m['local_id']?.toString() == localId) {
+          return true;
+        }
+        return false;
+      });
+    });
   }
 
   Future<void> _loadTokenAndInitializeSocket() async {
@@ -202,11 +265,14 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
 
   Future<void> _initializeSocket() async {
     _socketService.off('new_message');
+    _socketService.off('message_deleted');
+    _socketService.off('reactions_updated');
     await _socketService.initialize(backendBaseUrl);
 
     _socketService.on('new_message', (data) async {
       if (!mounted) return;
 
+      final messageId = data['id'];
       final senderId = data['sender_id']?.toString() ?? 'unknown';
       final sender = data['sender']?.toString() ?? 'Участник';
       final content = data['content']?.toString() ?? '';
@@ -216,22 +282,48 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
         sender: sender,
         content: content,
         timestamp: data['timestamp'],
+        id: messageId,
+        messageType: data['message_type'],
+        routeShare: data['route_share'],
+        reactions: data['reactions'],
       );
 
       setState(() {
-        _messages.insert(0, incoming);
-        if (senderId != _currentUserId) {
-          _newIncomingCount += 1;
+        if (messageId != null) {
+          final idStr = messageId.toString();
+          _messages.removeWhere((m) => m['id']?.toString() == idStr);
         }
+        if (senderId == _currentUserId) {
+          _messages.removeWhere((m) =>
+              m['sender_id'] == _currentUserId &&
+              m['id'] == null &&
+              m['content'] == incoming['content']);
+        }
+        _messages.insert(0, incoming);
       });
 
-      if (senderId != _currentUserId && content.isNotEmpty) {
-        await NotificationService.instance.show(
-          title: _chatTitle.isEmpty ? 'Новое сообщение' : _chatTitle,
-          body: '$sender: $content',
-          payload: widget.chatId,
-        );
+      if (senderId != _currentUserId) {
+        await _markChatAsRead();
       }
+    });
+
+    _socketService.on('message_deleted', (data) {
+      if (!mounted) return;
+      final chatId = data['chat_id']?.toString();
+      if (chatId != null && chatId != widget.chatId) return;
+      _removeMessageFromList(data['message_id']);
+    });
+
+    _socketService.on('reactions_updated', (data) {
+      if (!mounted) return;
+      final chatId = data['chat_id']?.toString();
+      if (chatId != null && chatId != widget.chatId) return;
+      final messageId = data['message_id'];
+      if (messageId == null) return;
+      _updateMessageReactions(
+        messageId,
+        _parseReactions(data['reactions']),
+      );
     });
 
     _socketService.joinChat(widget.chatId);
@@ -263,6 +355,16 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
     }
   }
 
+  Future<void> _markChatAsRead() async {
+    if (_token == null) return;
+    try {
+      final groupChatService = GroupChatService(token: _token!);
+      await groupChatService.markChatAsRead(widget.chatId);
+    } catch (_) {
+      // Ignore read-mark errors; list refresh will retry later.
+    }
+  }
+
   Future<void> _fetchChatData() async {
     try {
       final groupChatService = GroupChatService(token: _token!);
@@ -273,17 +375,31 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
       if (!mounted) return;
       setState(() {
         _chatTitle = (chatDetails['title'] ?? widget.initialTitle ?? '').toString();
-        _participants = _parseParticipants(chatDetails['participants']);
+        _creatorId = (chatDetails['creatorId'] as num?)?.toInt();
+        _creatorName = chatDetails['creatorName']?.toString();
+        _participants = ChatParticipant.fromJsonList(
+          chatDetails['participants'],
+          creatorId: _creatorId,
+        );
+        _creatorName ??= ChatParticipant.creatorNameFrom(_participants);
         _messages = List<Map<String, dynamic>>.from(
           (chatDetails['messages'] ?? []).map((m) => _normalizeMessage(
                 senderId: m['sender_id'],
                 sender: m['sender'],
                 content: m['content'],
                 timestamp: m['timestamp'],
+                id: m['id'],
+                messageType: m['message_type'],
+                routeShare: m['route_share'],
+                reactions: m['reactions'],
               )),
         ).reversed.toList();
         _isLoading = false;
       });
+      await _markChatAsRead();
+      if (mounted) {
+        setState(() => _newIncomingCount = 0);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -293,32 +409,16 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
     }
   }
 
-  List<_ChatParticipant> _parseParticipants(dynamic raw) {
-    if (raw is! List) return const [];
-
-    return raw.map<_ChatParticipant>((item) {
-      if (item is Map<String, dynamic>) {
-        return _ChatParticipant(
-          name: (item['name'] ?? 'Пользователь').toString(),
-          userId: item['id']?.toString() ?? item['userId']?.toString(),
-        );
-      }
-      if (item is Map) {
-        return _ChatParticipant(
-          name: (item['name'] ?? 'Пользователь').toString(),
-          userId: item['id']?.toString() ?? item['userId']?.toString(),
-        );
-      }
-      return _ChatParticipant(name: item.toString(), userId: null);
-    }).toList();
-  }
-
   void _setReplyTo(Map<String, dynamic> message) {
     setState(() => _replyTo = message);
   }
 
-  Future<void> _showReactionPicker(String messageId) async {
-    final selected = await showModalBottomSheet<String>(
+  Future<void> _showMessageActions(
+    Map<String, dynamic> message,
+    bool isCurrentUser,
+    String messageId,
+  ) async {
+    final action = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
@@ -326,34 +426,158 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
       ),
       builder: (context) {
         const emojis = ['👍', '🔥', '❤️', '👏', '😂', '😮'];
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          child: Wrap(
-            spacing: 12,
-            children: emojis
-                .map(
-                  (emoji) => GestureDetector(
-                    onTap: () => Navigator.pop(context, emoji),
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF2F5F7),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(emoji, style: const TextStyle(fontSize: 24)),
-                    ),
+        final canDelete = isCurrentUser && message['id'] != null;
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.reply_rounded, color: AuthColors.body),
+                  title: Text('Ответить', style: authFieldStyle()),
+                  onTap: () => Navigator.pop(context, 'reply'),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Wrap(
+                    spacing: 12,
+                    children: emojis
+                        .map(
+                          (emoji) => GestureDetector(
+                            onTap: () => Navigator.pop(context, 'react:$emoji'),
+                            child: Container(
+                              width: 48,
+                              height: 48,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF2F5F7),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(emoji, style: const TextStyle(fontSize: 24)),
+                            ),
+                          ),
+                        )
+                        .toList(),
                   ),
-                )
-                .toList(),
+                ),
+                if (canDelete) ...[
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.delete_outline_rounded,
+                        color: Color(0xFFE53935)),
+                    title: Text(
+                      'Удалить',
+                      style: authFieldStyle().copyWith(color: const Color(0xFFE53935)),
+                    ),
+                    onTap: () => Navigator.pop(context, 'delete'),
+                  ),
+                ],
+              ],
+            ),
           ),
         );
       },
     );
 
-    if (!mounted || selected == null) return;
-    setState(() => _reactions[messageId] = selected);
+    if (!mounted || action == null) return;
+
+    if (action == 'reply') {
+      _setReplyTo(message);
+      return;
+    }
+
+    if (action.startsWith('react:')) {
+      await _toggleReaction(message, action.substring(6));
+      return;
+    }
+
+    if (action == 'delete') {
+      await _confirmAndDeleteMessage(message, messageId);
+    }
+  }
+
+  Future<void> _toggleReaction(
+    Map<String, dynamic> message,
+    String emoji,
+  ) async {
+    final serverId = message['id'];
+    if (serverId == null || _token == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Реакцию можно поставить только после отправки сообщения'),
+        ),
+      );
+      return;
+    }
+
+    try {
+      final reactions = await GroupChatService(token: _token!).toggleMessageReaction(
+        chatId: widget.chatId,
+        messageId: serverId.toString(),
+        emoji: emoji,
+      );
+      if (!mounted) return;
+      _updateMessageReactions(serverId, reactions);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось поставить реакцию: $e')),
+      );
+    }
+  }
+
+  Future<void> _confirmAndDeleteMessage(
+    Map<String, dynamic> message,
+    String messageLocalId,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удалить сообщение?'),
+        content: const Text('Сообщение будет удалено для всех участников чата.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'Удалить',
+              style: TextStyle(color: Color(0xFFE53935)),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final serverId = message['id'];
+    if (serverId == null) {
+      _removeMessageFromList(null, localId: messageLocalId);
+      return;
+    }
+
+    if (_token == null) return;
+
+    try {
+      await GroupChatService(token: _token!).deleteMessage(
+        widget.chatId,
+        serverId.toString(),
+      );
+      if (!mounted) return;
+      _removeMessageFromList(serverId, localId: messageLocalId);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось удалить сообщение: $e')),
+      );
+    }
   }
 
   Future<void> _sendMessage() async {
@@ -402,81 +626,93 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
     });
   }
 
-  void _openParticipantsSheet() {
-    showModalBottomSheet<void>(
+  void _insertSharedRouteMessage(Map<String, dynamic> message) {
+    final normalized = _normalizeMessage(
+      senderId: message['sender_id'] ?? _currentUserId,
+      sender: message['sender'] ?? 'Вы',
+      content: message['content'],
+      timestamp: message['timestamp'],
+      id: message['id'],
+      messageType: message['message_type'],
+      routeShare: message['route_share'],
+      reactions: message['reactions'],
+    );
+
+    setState(() {
+      final messageId = normalized['id']?.toString();
+      if (messageId != null) {
+        _messages.removeWhere((m) => m['id']?.toString() == messageId);
+      }
+      _messages.insert(0, normalized);
+    });
+  }
+
+  Future<void> _downloadSharedRoute(Map<String, dynamic> message) async {
+    if (_token == null || !_isRouteMessage(message)) return;
+
+    final share = Map<String, dynamic>.from(message['route_share'] as Map);
+    final shareId = (share['id'] as num?)?.toInt();
+    final originalFilename =
+        share['originalFilename']?.toString() ?? 'route.gpx';
+    if (shareId == null) return;
+
+    final key = _routeDownloadKey(message);
+    if (_downloadingRouteKeys.contains(key)) return;
+
+    setState(() => _downloadingRouteKeys.add(key));
+
+    try {
+      final routeService = ChatRouteService(token: _token!);
+      final savedPath = await routeService.downloadRoute(
+        chatId: widget.chatId,
+        shareId: shareId,
+        originalFilename: originalFilename,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Маршрут сохранён: $savedPath')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось скачать маршрут: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _downloadingRouteKeys.remove(key));
+      }
+    }
+  }
+
+  Future<void> _openAttachRouteDialog() async {
+    if (_token == null) return;
+
+    await showDialog<void>(
       context: context,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      builder: (_) => AttachRouteDialog(
+        chatId: widget.chatId,
+        routeService: ChatRouteService(token: _token!),
+        onShared: _insertSharedRouteMessage,
       ),
-      builder: (context) => SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Участники',
-                style: GoogleFonts.lexendDeca(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: AuthColors.title,
-                ),
-              ),
-              const SizedBox(height: 10),
-              if (_participants.isEmpty)
-                Text('Список участников недоступен', style: authSubtitleStyle())
-              else
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: _participants.length,
-                    separatorBuilder: (_, __) =>
-                        const Divider(height: 1, color: AuthColors.divider),
-                    itemBuilder: (context, index) {
-                      final user = _participants[index];
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: CircleAvatar(
-                          backgroundColor:
-                              AuthColors.primaryGreen.withValues(alpha: 0.16),
-                          child: Text(
-                            user.name.isEmpty ? '?' : user.name[0].toUpperCase(),
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                        title: Text(
-                          user.name,
-                          style: GoogleFonts.lexendDeca(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AuthColors.title,
-                          ),
-                        ),
-                        trailing:
-                            user.userId == null ? null : const Icon(Icons.chevron_right),
-                        onTap: user.userId == null
-                            ? null
-                            : () {
-                                Navigator.pop(context);
-                                Navigator.of(this.context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        UserProfilePage(userId: user.userId!),
-                                  ),
-                                );
-                              },
-                      );
-                    },
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
+    );
+  }
+
+  Future<void> _openParticipantsSheet() async {
+    if (_token == null) return;
+
+    await ChatParticipantsSheet.show(
+      context,
+      title: 'Участники',
+      chatId: widget.chatId,
+      chatService: GroupChatService(token: _token!),
+      participants: _participants,
+      creatorId: _creatorId,
+      creatorName: _creatorName,
+      currentUserId: _currentUserId,
+      onParticipantsChanged: _fetchChatData,
+      onChatDeleted: () {
+        if (mounted) Navigator.pop(context);
+      },
     );
   }
 
@@ -507,8 +743,12 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
             Text(
               _participants.isEmpty
                   ? 'подключение...'
-                  : '${_participants.length} участников',
+                  : _creatorName != null && _creatorName!.isNotEmpty
+                      ? '${_participants.length} участников · создатель: $_creatorName'
+                      : '${_participants.length} участников',
               style: authSubtitleStyle().copyWith(fontSize: 11),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -516,7 +756,11 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
           Stack(
             children: [
               IconButton(
-                onPressed: () => setState(() => _newIncomingCount = 0),
+                onPressed: () async {
+                  setState(() => _newIncomingCount = 0);
+                  await _markChatAsRead();
+                  await NotificationService.instance.cancelAll();
+                },
                 icon: const Icon(Icons.notifications_outlined),
               ),
               if (_newIncomingCount > 0)
@@ -581,7 +825,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                                 : (message['sender']?.toString() ?? _currentUserName ?? 'Участник');
                             final time = _formatTime(message['timestamp']);
                             final messageId = message['local_id']?.toString() ?? '$index';
-                            final reaction = _reactions[messageId];
+                            final reactions = _parseReactions(message['reactions']);
 
                             final bubble = Dismissible(
                               key: ValueKey(messageId),
@@ -614,7 +858,11 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                                     ? Alignment.centerRight
                                     : Alignment.centerLeft,
                                 child: GestureDetector(
-                                  onLongPress: () => _showReactionPicker(messageId),
+                                  onLongPress: () => _showMessageActions(
+                                    message,
+                                    isCurrentUser,
+                                    messageId,
+                                  ),
                                   child: Container(
                                     constraints: BoxConstraints(
                                       maxWidth: MediaQuery.of(context).size.width * 0.78,
@@ -692,13 +940,37 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                                               ],
                                             ),
                                           ),
-                                        Text(
-                                          message['content']?.toString() ?? '',
-                                          style: GoogleFonts.lexendDeca(
-                                            fontSize: 14,
-                                            color: const Color(0xFF1E1E1E),
+                                        if (_isRouteMessage(message))
+                                          ChatRouteMessageBubble(
+                                            title: (message['route_share']
+                                                        as Map)['title']
+                                                    ?.toString() ??
+                                                'Маршрут',
+                                            fileName: (message['route_share']
+                                                        as Map)['originalFilename']
+                                                    ?.toString() ??
+                                                'route.gpx',
+                                            fileSize: ((message['route_share']
+                                                        as Map)['fileSize']
+                                                    as num?)
+                                                ?.toInt(),
+                                            isCurrentUser: isCurrentUser,
+                                            isDownloading:
+                                                _downloadingRouteKeys.contains(
+                                              _routeDownloadKey(message),
+                                            ),
+                                            onDownload: () =>
+                                                _downloadSharedRoute(message),
+                                          )
+                                        else
+                                          Text(
+                                            message['content']?.toString() ??
+                                                '',
+                                            style: GoogleFonts.lexendDeca(
+                                              fontSize: 14,
+                                              color: const Color(0xFF1E1E1E),
+                                            ),
                                           ),
-                                        ),
                                         const SizedBox(height: 2),
                                         Row(
                                           mainAxisSize: MainAxisSize.min,
@@ -720,21 +992,16 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                                             ],
                                           ],
                                         ),
-                                        if (reaction != null)
-                                          Padding(
-                                            padding: const EdgeInsets.only(top: 4),
-                                            child: Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                  horizontal: 8, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius: BorderRadius.circular(10),
-                                                border: Border.all(
-                                                    color: const Color(0xFFD8D8D8)),
-                                              ),
-                                              child: Text(reaction),
-                                            ),
-                                          ),
+                                        ChatMessageReactions(
+                                          reactions: reactions,
+                                          currentUserId: _currentUserId,
+                                          onReactionTap: message['id'] == null
+                                              ? null
+                                              : (emoji) => _toggleReaction(
+                                                    message,
+                                                    emoji,
+                                                  ),
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -823,7 +1090,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                   top: false,
                   child: Container(
                     margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
@@ -838,18 +1105,18 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                     child: Row(
                       children: [
                         IconButton(
+                          constraints: const BoxConstraints(
+                            minWidth: 36,
+                            minHeight: 36,
+                          ),
+                          padding: EdgeInsets.zero,
                           icon: const FaIcon(
                             FontAwesomeIcons.route,
-                            size: 18,
+                            size: 17,
                             color: Color(0xFF7A7A7A),
                           ),
                           tooltip: 'Прикрепить маршрут',
-                          onPressed: () {
-                            showDialog(
-                              context: context,
-                              builder: (_) => const AttachRouteDialog(),
-                            );
-                          },
+                          onPressed: _openAttachRouteDialog,
                         ),
                         Expanded(
                           child: TextField(
@@ -862,28 +1129,43 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                                   ? 'Сообщение'
                                   : 'Ответить ${_replyTo!['sender']}',
                               hintStyle: authHintStyle(),
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 8,
+                                horizontal: 4,
+                              ),
                               border: InputBorder.none,
                             ),
                           ),
                         ),
-                        Container(
-                          decoration: const BoxDecoration(
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 38,
+                          height: 38,
+                          child: Material(
                             color: AuthColors.primaryGreen,
-                            shape: BoxShape.circle,
-                          ),
-                          child: IconButton(
-                            icon: _isSending
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : const FaIcon(
-                                    FontAwesomeIcons.paperPlane,
-                                    size: 16,
-                                    color: Colors.black87,
-                                  ),
-                            onPressed: _isSending ? null : _sendMessage,
+                            shape: const CircleBorder(),
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              icon: _isSending
+                                  ? const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                          Colors.white,
+                                        ),
+                                      ),
+                                    )
+                                  : const FaIcon(
+                                      FontAwesomeIcons.paperPlane,
+                                      size: 14,
+                                      color: Colors.white,
+                                    ),
+                              onPressed: _isSending ? null : _sendMessage,
+                            ),
                           ),
                         ),
                       ],
@@ -896,9 +1178,3 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
   }
 }
 
-class _ChatParticipant {
-  const _ChatParticipant({required this.name, required this.userId});
-
-  final String name;
-  final String? userId;
-}

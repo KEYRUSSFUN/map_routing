@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:map_routing/core/services/notification_service.dart';
 import 'package:map_routing/core/widgets/app_bottom_nav_bar.dart';
 import 'package:map_routing/data/models/chat.dart';
+import 'package:map_routing/data/models/chat_participant.dart';
 import 'package:map_routing/data/models/friend.dart';
 import 'package:map_routing/data/services/friend_service.dart';
 import 'package:map_routing/data/services/group_service.dart';
@@ -13,9 +14,9 @@ import 'package:map_routing/data/services/user_search_service.dart';
 import 'package:map_routing/data/services/user_service.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
 import 'package:map_routing/features/chat/presentation/chat_screen_page.dart';
+import 'package:map_routing/features/chat/widgets/chat_participants_sheet.dart';
+import 'package:map_routing/features/chat/widgets/add_user_sheet.dart';
 import 'package:map_routing/features/chat/widgets/create_chat_dialog.dart';
-import 'package:map_routing/features/chat/widgets/user_search_result.dart';
-import 'package:map_routing/features/profile/presentation/user_profile_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final RouteObserver<PageRoute> chatListRouteObserver =
@@ -46,23 +47,31 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
 
   _CommunityTab _selectedTab = _CommunityTab.groups;
   String _searchQuery = '';
+  Timer? _searchDebounce;
 
   int _lastRequestCount = 0;
   int _lastMessagesCount = 0;
+  int _lastGroupInvitationCount = 0;
+  int _unreadFriendRequestCount = 0;
+  int _unreadGroupInvitationCount = 0;
 
   int get _requestCount => _friendRequests.length;
 
   int get _newMessageCount =>
-      _chats.where((c) => c.lastMessage.trim().isNotEmpty).length;
+      _chats.fold<int>(0, (sum, chat) => sum + chat.unreadCount);
 
-  int get _notificationCount => _requestCount + _newMessageCount;
+  int get _notificationCount =>
+      _unreadFriendRequestCount +
+      _newMessageCount +
+      _unreadGroupInvitationCount;
 
   List<Chat> get _filteredChats {
     final query = _searchQuery.trim().toLowerCase();
     if (query.isEmpty) return _chats;
     return _chats.where((chat) {
       return chat.title.toLowerCase().contains(query) ||
-          chat.lastMessage.toLowerCase().contains(query);
+          chat.lastMessage.toLowerCase().contains(query) ||
+          chat.lastMessageSender.toLowerCase().contains(query);
     }).toList();
   }
 
@@ -83,6 +92,7 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     chatListRouteObserver.unsubscribe(this);
     super.dispose();
   }
@@ -92,37 +102,94 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
     loadData();
   }
 
-  void loadData() {
+  Future<void> _markNotificationsSeen() async {
+    try {
+      if (_friendService != null) {
+        await _friendService!.markFriendRequestsSeen();
+      }
+      if (_chatService != null) {
+        await _chatService!.markGroupInvitationsSeen();
+      }
+      await NotificationService.instance.cancelAll();
+      if (!mounted) return;
+      setState(() {
+        _unreadFriendRequestCount = 0;
+        _unreadGroupInvitationCount = 0;
+        _lastGroupInvitationCount = 0;
+        for (final request in _friendRequests) {
+          request['isUnread'] = false;
+        }
+        _chats = _chats
+            .map(
+              (chat) => Chat(
+                id: chat.id,
+                title: chat.title,
+                lastMessage: chat.lastMessage,
+                lastMessageSender: chat.lastMessageSender,
+                unreadCount: chat.unreadCount,
+                creatorId: chat.creatorId,
+                creatorName: chat.creatorName,
+                isInvitationUnread: false,
+              ),
+            )
+            .toList();
+      });
+    } catch (_) {
+      // Ignore marking errors; list refresh will retry later.
+    }
+  }
+
+  void loadData({bool silent = false}) {
     if (_loading) return;
-    setState(() => _loading = true);
+    if (!silent || !_dataLoaded) {
+      setState(() => _loading = true);
+    }
 
     _initializeServiceAndLoadData().then((_) async {
       if (!mounted) return;
 
       if (_dataLoaded) {
-        if (_requestCount > _lastRequestCount) {
+        if (_unreadFriendRequestCount > _lastRequestCount) {
           await NotificationService.instance.show(
             title: 'Новые заявки в друзья',
-            body: 'У вас $_requestCount заявок в друзья',
+            body: 'У вас $_unreadFriendRequestCount новых заявок в друзья',
           );
         }
 
         if (_newMessageCount > _lastMessagesCount) {
           await NotificationService.instance.show(
             title: 'Новые сообщения',
-            body: 'Появились новые сообщения в группах',
+            body: 'У вас $_newMessageCount непрочитанных сообщений',
+          );
+        }
+
+        if (_unreadGroupInvitationCount > _lastGroupInvitationCount) {
+          final count = _unreadGroupInvitationCount;
+          final groupWord = count == 1
+              ? 'группу'
+              : count < 5
+                  ? 'группы'
+                  : 'групп';
+          await NotificationService.instance.show(
+            title: 'Новые группы',
+            body: 'Вас добавили в $count $groupWord',
           );
         }
       }
 
-      _lastRequestCount = _requestCount;
+      _lastRequestCount = _unreadFriendRequestCount;
       _lastMessagesCount = _newMessageCount;
+      _lastGroupInvitationCount = _unreadGroupInvitationCount;
 
       setState(() {
         _dataLoaded = true;
         _loading = false;
         _loadError = null;
       });
+
+      if (_selectedTab == _CommunityTab.groups) {
+        await _markNotificationsSeen();
+      }
     }).catchError((error) {
       if (!mounted) return;
       setState(() {
@@ -157,15 +224,19 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
       throw Exception('Не найден идентификатор пользователя');
     }
 
-    final chats = await _chatService!.fetchUserChats();
+    final chatsResponse = await _chatService!.fetchUserChats();
     final friends = await _friendService!.fetchFriends();
     final requests = await _friendService!.fetchFriendRequests();
+    final unreadRequests =
+        requests.where((request) => request['isUnread'] == true).length;
 
     if (!mounted) return;
     setState(() {
-      _chats = chats;
+      _chats = chatsResponse.chats;
       _friends = friends;
       _friendRequests = requests;
+      _unreadFriendRequestCount = unreadRequests;
+      _unreadGroupInvitationCount = chatsResponse.unreadInvitationCount;
       _currentUserId = userId;
     });
   }
@@ -225,93 +296,33 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
     }
   }
 
-  Future<void> _showParticipants(String chatId) async {
+  Future<void> _showParticipants(Chat chat) async {
     if (_chatService == null) return;
 
     try {
-      final details = await _chatService!.getChatDetails(chatId);
+      final details = await _chatService!.getChatDetails(chat.id);
       if (!mounted) return;
-      final participants = _parseParticipants(details['participants']);
-      showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        backgroundColor: Colors.white,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        builder: (context) {
-          return SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Участники группы',
-                    style: GoogleFonts.lexendDeca(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: AuthColors.title,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (participants.isEmpty)
-                    Text('Нет данных по участникам', style: authSubtitleStyle())
-                  else
-                    Flexible(
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        itemCount: participants.length,
-                        separatorBuilder: (_, __) =>
-                            const Divider(height: 1, color: AuthColors.divider),
-                        itemBuilder: (context, index) {
-                          final p = participants[index];
-                          return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: CircleAvatar(
-                              backgroundColor: AuthColors.primaryGreen
-                                  .withValues(alpha: 0.18),
-                              child: Text(
-                                p.name.isEmpty ? '?' : p.name[0].toUpperCase(),
-                                style: GoogleFonts.lexendDeca(
-                                  fontWeight: FontWeight.w700,
-                                  color: AuthColors.title,
-                                ),
-                              ),
-                            ),
-                            title: Text(
-                              p.name,
-                              style: GoogleFonts.lexendDeca(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: AuthColors.title,
-                              ),
-                            ),
-                            trailing: p.userId == null
-                                ? null
-                                : const Icon(Icons.chevron_right),
-                            onTap: p.userId == null
-                                ? null
-                                : () {
-                                    Navigator.pop(context);
-                                    Navigator.of(this.context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            UserProfilePage(userId: p.userId!),
-                                      ),
-                                    );
-                                  },
-                          );
-                        },
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          );
-        },
+
+      final creatorId =
+          (details['creatorId'] as num?)?.toInt() ?? chat.creatorId;
+      final participants = ChatParticipant.fromJsonList(
+        details['participants'],
+        creatorId: creatorId,
+      );
+      final creatorName = details['creatorName']?.toString() ??
+          ChatParticipant.creatorNameFrom(participants);
+
+      await ChatParticipantsSheet.show(
+        context,
+        title: 'Участники группы',
+        chatId: chat.id,
+        chatService: _chatService!,
+        participants: participants,
+        creatorId: creatorId,
+        creatorName: creatorName,
+        currentUserId: _currentUserId,
+        onParticipantsChanged: loadData,
+        onChatDeleted: loadData,
       );
     } catch (e) {
       if (!mounted) return;
@@ -322,111 +333,17 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
   }
 
   void _showSearchDialog() {
-    String searchQuery = '';
-    List<Map<String, dynamic>> searchResults = [];
-    bool isSearching = false;
+    if (_userSearchService == null || _friendService == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Данные ещё загружаются')),
+      );
+      return;
+    }
 
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) => AlertDialog(
-            backgroundColor: Colors.white,
-            title: Text(
-              'Поиск пользователя',
-              style: authTitleStyle().copyWith(fontSize: 20),
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    decoration: InputDecoration(
-                      hintText: 'Введите имя пользователя',
-                      hintStyle: authHintStyle(),
-                    ),
-                    onChanged: (value) async {
-                      setDialogState(() {
-                        searchQuery = value;
-                        isSearching = true;
-                      });
-
-                      if (value.isEmpty) {
-                        setDialogState(() {
-                          searchResults = [];
-                          isSearching = false;
-                        });
-                        return;
-                      }
-
-                      await Future.delayed(const Duration(milliseconds: 300));
-                      if (searchQuery != value || _userSearchService == null) {
-                        return;
-                      }
-
-                      try {
-                        final users =
-                            await _userSearchService!.searchUsers(value);
-                        setDialogState(() {
-                          searchResults = users;
-                          isSearching = false;
-                        });
-                      } catch (e) {
-                        setDialogState(() {
-                          searchResults = [];
-                          isSearching = false;
-                        });
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(this.context).showSnackBar(
-                          SnackBar(content: Text('Ошибка поиска: $e')),
-                        );
-                      }
-                    },
-                  ),
-                  if (isSearching)
-                    const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                  SizedBox(
-                    width: double.maxFinite,
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: searchResults.length,
-                      itemBuilder: (_, index) {
-                        final user = searchResults[index];
-                        return UserSearchResult(
-                          userId: user['id'].toString(),
-                          name: user['name'] ?? 'Без имени',
-                          onAddFriend: (targetUserId) async {
-                            if (_friendService != null &&
-                                _currentUserId != null) {
-                              await _friendService!
-                                  .sendFriendRequest(targetUserId);
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(this.context).showSnackBar(
-                                const SnackBar(
-                                    content: Text('Заявка отправлена')),
-                              );
-                            }
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: Text('Закрыть', style: authLinkStyle()),
-              ),
-            ],
-          ),
-        );
-      },
+    AddUserSheet.show(
+      context,
+      userSearchService: _userSearchService!,
+      friendService: _friendService!,
     );
   }
 
@@ -465,10 +382,13 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
             icon: FontAwesomeIcons.bell,
             count: _notificationCount,
             onTap: () {
+              _markNotificationsSeen();
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                    'Заявки: $_requestCount, новые сообщения: $_newMessageCount',
+                    'Заявки: $_unreadFriendRequestCount, '
+                    'группы: $_unreadGroupInvitationCount, '
+                    'сообщения: $_newMessageCount',
                   ),
                 ),
               );
@@ -492,14 +412,25 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           child: _CommunitySegmented(
             selected: _selectedTab,
-            groupBadge: _requestCount,
-            onChanged: (value) => setState(() => _selectedTab = value),
+            groupBadge: _unreadFriendRequestCount + _unreadGroupInvitationCount,
+            onChanged: (value) {
+              setState(() => _selectedTab = value);
+              if (value == _CommunityTab.groups) {
+                _markNotificationsSeen();
+              }
+            },
           ),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: TextField(
-            onChanged: (v) => setState(() => _searchQuery = v),
+            onChanged: (value) {
+              _searchDebounce?.cancel();
+              _searchDebounce = Timer(const Duration(milliseconds: 250), () {
+                if (!mounted) return;
+                setState(() => _searchQuery = value);
+              });
+            },
             style: authFieldStyle(),
             decoration: InputDecoration(
               hintText: 'Поиск групп и чатов...',
@@ -553,7 +484,7 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
         const SizedBox(height: 10),
         SizedBox(
           width: double.infinity,
-          height: 48,
+          height: 52,
           child: ElevatedButton.icon(
             onPressed: _createNewChat,
             icon: const Icon(Icons.add_rounded, size: 20),
@@ -562,12 +493,14 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
               style: GoogleFonts.lexendDeca(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
+                height: 1.2,
               ),
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: AuthColors.primaryGreen,
               foregroundColor: Colors.white,
               elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -584,9 +517,8 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
           ...chats.map(
             (chat) => _ChatListTile(
               chat: chat,
-              showNewBadge: chat.lastMessage.trim().isNotEmpty,
-              onOpen: () {
-                Navigator.push(
+              onOpen: () async {
+                await Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => ChatScreen(
@@ -595,16 +527,25 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
                     ),
                   ),
                 );
+                if (_chatService != null) {
+                  try {
+                    await _chatService!.markChatAsRead(chat.id);
+                  } catch (_) {}
+                }
+                if (mounted) loadData();
               },
-              onParticipantsTap: () => _showParticipants(chat.id),
+              onParticipantsTap: () => _showParticipants(chat),
             ),
           ),
         const SizedBox(height: 16),
         _SectionTitle(
           title: 'Заявки в друзья',
-          trailing: _requestCount == 0
+          trailing: _unreadFriendRequestCount == 0
               ? null
-              : _Badge(count: _requestCount, color: const Color(0xFFFFB300)),
+              : _Badge(
+                  count: _unreadFriendRequestCount,
+                  color: const Color(0xFFFFB300),
+                ),
         ),
         if (_friendRequests.isEmpty)
           const _EmptyCard(
@@ -670,28 +611,6 @@ class GroupChatsPageState extends State<GroupChatsPage> with RouteAware {
     );
   }
 
-  List<_ChatParticipant> _parseParticipants(dynamic rawParticipants) {
-    if (rawParticipants is! List) return const [];
-
-    return rawParticipants.map<_ChatParticipant>((item) {
-      if (item is Map<String, dynamic>) {
-        final id = item['id']?.toString() ?? item['userId']?.toString();
-        final name = item['name']?.toString() ??
-            item['username']?.toString() ??
-            'Пользователь';
-        return _ChatParticipant(name: name, userId: id);
-      }
-      if (item is Map) {
-        final id = item['id']?.toString() ?? item['userId']?.toString();
-        final name = item['name']?.toString() ??
-            item['username']?.toString() ??
-            'Пользователь';
-        return _ChatParticipant(name: name, userId: id);
-      }
-
-      return _ChatParticipant(name: item.toString(), userId: null);
-    }).toList();
-  }
 }
 
 class _SectionTitle extends StatelessWidget {
@@ -872,13 +791,11 @@ class _BadgeIconButton extends StatelessWidget {
 class _ChatListTile extends StatelessWidget {
   const _ChatListTile({
     required this.chat,
-    required this.showNewBadge,
     required this.onOpen,
     required this.onParticipantsTap,
   });
 
   final Chat chat;
-  final bool showNewBadge;
   final VoidCallback onOpen;
   final VoidCallback onParticipantsTap;
 
@@ -945,16 +862,32 @@ class _ChatListTile extends StatelessWidget {
                               ),
                             ),
                           ),
-                          if (showNewBadge)
-                            const _Badge(
-                                count: 1, color: AuthColors.primaryGreen),
+                          if (chat.unreadCount > 0)
+                            _Badge(
+                              count: chat.unreadCount,
+                              color: AuthColors.primaryGreen,
+                            ),
                         ],
                       ),
                       const SizedBox(height: 4),
+                      if (chat.isInvitationUnread)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            chat.creatorName != null &&
+                                    chat.creatorName!.isNotEmpty
+                                ? '${chat.creatorName} добавил(а) вас в группу'
+                                : 'Вас добавили в группу',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: authSubtitleStyle().copyWith(
+                              color: AuthColors.primaryGreen,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                       Text(
-                        chat.lastMessage.isEmpty
-                            ? 'Начните обсуждение в группе'
-                            : chat.lastMessage,
+                        chat.lastMessagePreview,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: authSubtitleStyle(),
@@ -1214,9 +1147,3 @@ class _ClubDiscoverCard extends StatelessWidget {
   }
 }
 
-class _ChatParticipant {
-  const _ChatParticipant({required this.name, required this.userId});
-
-  final String name;
-  final String? userId;
-}

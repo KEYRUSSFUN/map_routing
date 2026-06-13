@@ -112,7 +112,8 @@ class GeometryProvider {
                 builder.element('ele', nest: point.elevation);
               }
               if (point.time != null) {
-                builder.element('time', nest: point.time!.toUtc().toIso8601String());
+                builder.element('time',
+                    nest: point.time!.toUtc().toIso8601String());
               }
             });
           }
@@ -155,7 +156,7 @@ class GeometryProvider {
     builder.processing('xml', 'version="1.0" encoding="UTF-8"');
     builder.element('gpx', nest: () {
       builder.attribute('version', '1.1');
-      builder.attribute('creator', 'MapRoutingApp');
+      builder.attribute('creator', 'StrideTrack');
       builder.element('trk', nest: () {
         builder.element('name', nest: 'Saved Route');
         builder.element('trkseg', nest: () {

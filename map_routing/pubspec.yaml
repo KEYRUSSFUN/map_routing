@@ -78,6 +78,7 @@ flutter:
     - assets/branding/app_icon.png
     - assets/branding/logo.png
     - assets/ic_finish_point.png
+    - assets/start_point.png
     - assets/noBgWhite.png
     - assets/start_page_bg.jpg
     - assets/nav_icons/arrow.png

@@ -41,7 +41,8 @@ class AppBottomNavBar extends StatelessWidget {
             child: InkWell(
               onTap: onReturnToWorkout,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 child: Row(
                   children: [
                     const FaIcon(FontAwesomeIcons.personRunning,
@@ -162,7 +163,7 @@ class _NavItem extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(50),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -207,7 +208,7 @@ class _StartWorkoutButton extends StatelessWidget {
           child: Center(
             child: FaIcon(
               FontAwesomeIcons.personRunning,
-              color: Color(0xFF030303),
+              color: Colors.white,
               size: 22,
             ),
           ),

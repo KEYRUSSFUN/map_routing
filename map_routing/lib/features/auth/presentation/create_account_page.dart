@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:map_routing/data/services/registration_service.dart';
 import 'package:map_routing/features/auth/data/auth_local_storage.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
+import 'package:map_routing/features/auth/presentation/complete_profile_page.dart';
 import 'package:map_routing/shared/utils/validators.dart';
 
 class CreateAccountPage extends StatefulWidget {
@@ -48,16 +49,37 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
 
     if (!mounted) return;
 
-    setState(() => _isLoading = false);
-
     if (registrationResult) {
-      await AuthLocalStorage.savePendingFullName(_nameController.text);
+      await AuthLocalStorage.savePendingFullName(_nameController.text.trim());
+      final token = await _registrationService.loginUser(email, password);
+
       if (!mounted) return;
+
+      setState(() => _isLoading = false);
+
+      if (token != null) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CompleteProfilePage(
+              token: token,
+              initialName: _nameController.text.trim(),
+            ),
+          ),
+        );
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Регистрация прошла успешно!')),
+        const SnackBar(
+          content: Text(
+            'Аккаунт создан. Войдите, чтобы заполнить профиль.',
+          ),
+        ),
       );
       Navigator.pushReplacementNamed(context, '/login_page');
     } else {
+      setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ошибка регистрации. Попробуйте снова.')),
       );

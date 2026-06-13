@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:map_routing/core/network/config.dart';
 import 'package:map_routing/data/services/registration_service.dart';
@@ -21,6 +22,26 @@ class _LoginPageState extends State<LoginPage> {
   String? _errorMessage;
 
   final registrationService = RegistrationService();
+
+  Future<bool> _needsProfileCompletion(String token) async {
+    final checkResponse = await http.get(
+      Uri.parse('$backendBaseUrl/api/user_info/check'),
+      headers: {'Authorization': token},
+    );
+
+    if (checkResponse.statusCode == 404) {
+      return true;
+    }
+
+    if (checkResponse.statusCode == 200) {
+      final data = jsonDecode(checkResponse.body);
+      if (data is Map<String, dynamic>) {
+        return data['filled'] != true;
+      }
+    }
+
+    return false;
+  }
 
   @override
   void dispose() {
@@ -47,14 +68,11 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = false);
 
     if (token != null) {
-      final checkResponse = await http.get(
-        Uri.parse('$backendBaseUrl/api/user_info/check'),
-        headers: {'Authorization': token},
-      );
+      final needsProfile = await _needsProfileCompletion(token);
 
       if (!mounted) return;
 
-      if (checkResponse.statusCode == 404) {
+      if (needsProfile) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => CompleteProfilePage(token: token)),

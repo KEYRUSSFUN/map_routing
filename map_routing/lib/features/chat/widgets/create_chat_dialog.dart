@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:map_routing/data/models/chat.dart';
 import 'package:map_routing/data/models/friend.dart';
 import 'package:map_routing/data/services/group_service.dart';
+import 'package:map_routing/core/widgets/user_avatar.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
 import 'package:map_routing/features/profile/presentation/profile_ui.dart';
 
@@ -199,10 +200,9 @@ class _CreateChatDialogState extends State<CreateChatDialog> {
                               ),
                               child: Row(
                                 children: [
-                                  CircleAvatar(
-                                    radius: 20,
-                                    backgroundImage:
-                                        NetworkImage(friend.avatarUrl),
+                                  UserAvatar(
+                                    name: friend.name,
+                                    avatarUrl: friend.avatarUrl,
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(

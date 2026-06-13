@@ -13,6 +13,7 @@ import 'package:map_routing/core/services/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yandex_maps_mapkit/init.dart' as init;
 import 'package:map_routing/features/auth/data/token_verify.dart';
+import 'package:map_routing/features/chat/presentation/chat_screen_page.dart';
 import 'package:map_routing/core/navigation/app_route_observer.dart';
 
 export 'package:map_routing/core/navigation/app_route_observer.dart'
@@ -34,7 +35,11 @@ void main() async {
     theme: AppTheme.lightTheme,
     darkTheme: MapkitFlutterTheme.darkTheme,
     themeMode: ThemeMode.system,
-    navigatorObservers: [appRouteObserver],
+    navigatorObservers: [
+      appRouteObserver,
+      chatRouteObserver,
+      chatListRouteObserver,
+    ],
     home: FutureBuilder<String?>(
       future: getToken(),
       builder: (BuildContext context, AsyncSnapshot<String?> tokenSnapshot) {
@@ -119,7 +124,8 @@ class _MapkitFlutterAppState extends State<MapkitFlutterApp> {
     return navIndex - 1;
   }
 
-  void _onWorkoutUiChanged({required bool isActive, required bool isFullscreen}) {
+  void _onWorkoutUiChanged(
+      {required bool isActive, required bool isFullscreen}) {
     setState(() {
       _workoutActive = isActive;
       _workoutFullscreen = isFullscreen;
@@ -139,7 +145,7 @@ class _MapkitFlutterAppState extends State<MapkitFlutterApp> {
     });
 
     if (navIndex == 4) profilePageKey.currentState?.refreshData();
-    if (navIndex == 3) groupChatsPageKey.currentState?.loadData();
+    if (navIndex == 3) groupChatsPageKey.currentState?.loadData(silent: true);
   }
 
   void _startWorkout() {
@@ -166,25 +172,28 @@ class _MapkitFlutterAppState extends State<MapkitFlutterApp> {
 
   @override
   Widget build(BuildContext context) {
-    final navPadding = _hideBottomNav
-        ? 0.0
-        : AppBottomNavBar.scrollEndPadding(context);
+    final navPadding =
+        _hideBottomNav ? 0.0 : AppBottomNavBar.scrollEndPadding(context);
 
     return Scaffold(
       extendBody: true,
       body: IndexedStack(
         index: _stackIndex,
+        sizing: StackFit.expand,
         children: [
-          const HomePage(),
-          MapScreen(
-            key: mapScreenKey,
-            gpxPath: _gpxPath,
-            bottomNavPadding: navPadding,
-            onWorkoutUiChanged: _onWorkoutUiChanged,
-            onWorkoutSaved: () => profilePageKey.currentState?.refreshData(),
+          RepaintBoundary(child: const HomePage()),
+          RepaintBoundary(
+            child: MapScreen(
+              key: mapScreenKey,
+              gpxPath: _gpxPath,
+              isTabActive: _stackIndex == 1,
+              bottomNavPadding: navPadding,
+              onWorkoutUiChanged: _onWorkoutUiChanged,
+              onWorkoutSaved: () => profilePageKey.currentState?.refreshData(),
+            ),
           ),
-          GroupChatsPage(key: groupChatsPageKey),
-          ProfilePage(key: profilePageKey),
+          RepaintBoundary(child: GroupChatsPage(key: groupChatsPageKey)),
+          RepaintBoundary(child: ProfilePage(key: profilePageKey)),
         ],
       ),
       bottomNavigationBar: _hideBottomNav

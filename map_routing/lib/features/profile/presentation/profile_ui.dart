@@ -157,10 +157,11 @@ class ProfileHeader extends StatelessWidget {
                     child: CircleAvatar(
                       radius: 42,
                       backgroundColor: Colors.grey.shade200,
-                      backgroundImage: avatarUrl != null && avatarUrl!.isNotEmpty
-                          ? NetworkImage(avatarUrl!)
-                          : const AssetImage('assets/images/profile.png')
-                              as ImageProvider,
+                      backgroundImage:
+                          avatarUrl != null && avatarUrl!.isNotEmpty
+                              ? NetworkImage(avatarUrl!)
+                              : const AssetImage('assets/images/profile.png')
+                                  as ImageProvider,
                     ),
                   ),
                 ),
@@ -259,12 +260,14 @@ class ProfileStatPill extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(data.icon, size: 14, color: ProfileColors.title),
+          Icon(data.icon,
+              size: 16, color: const Color.fromARGB(255, 255, 255, 255)),
           const SizedBox(width: 6),
           Flexible(
             child: Text(
               data.label,
-              style: profileSubtitleStyle(color: ProfileColors.title),
+              style: profileSubtitleStyle(
+                  color: const Color.fromARGB(255, 255, 255, 255)),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -310,7 +313,8 @@ class ProfileTabBar extends StatelessWidget {
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(
-                    color: isActive ? ProfileColors.tabActive : Colors.transparent,
+                    color:
+                        isActive ? ProfileColors.tabActive : Colors.transparent,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -319,7 +323,8 @@ class ProfileTabBar extends StatelessWidget {
                     style: GoogleFonts.lexendDeca(
                       fontSize: 13,
                       fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-                      color: isActive ? ProfileColors.title : ProfileColors.body,
+                      color:
+                          isActive ? ProfileColors.title : ProfileColors.body,
                     ),
                   ),
                 ),
@@ -412,7 +417,9 @@ class PersonalRecordCard extends StatelessWidget {
             style: GoogleFonts.lexendDeca(
               fontSize: 22,
               fontWeight: FontWeight.w800,
-              color: badge != null ? ProfileColors.orange : ProfileColors.primaryGreen,
+              color: badge != null
+                  ? ProfileColors.orange
+                  : ProfileColors.primaryGreen,
             ),
           ),
           if (badge != null) ...[
@@ -462,7 +469,9 @@ class AchievementBadge extends StatelessWidget {
             border: Border.all(
               color: locked
                   ? Colors.grey.shade300
-                  : (highlighted ? ProfileColors.orange : ProfileColors.orangeBorder),
+                  : (highlighted
+                      ? ProfileColors.orange
+                      : ProfileColors.orangeBorder),
               width: highlighted ? 2.5 : 1.5,
             ),
           ),
@@ -519,48 +528,48 @@ class ActivityCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: const BoxDecoration(
-              color: ProfileColors.primaryGreen,
-              shape: BoxShape.circle,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: const BoxDecoration(
+                color: ProfileColors.primaryGreen,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: Colors.white, size: 22),
             ),
-            child: Icon(icon, color: Colors.white, size: 22),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: profileTitleStyle(size: 16)),
-                const SizedBox(height: 2),
-                Text(subtitle, style: profileSubtitleStyle()),
-                if (detailLine != null && detailLine!.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    detailLine!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: profileSubtitleStyle(),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: profileTitleStyle(size: 16)),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: profileSubtitleStyle()),
+                  if (detailLine != null && detailLine!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      detailLine!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: profileSubtitleStyle(),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      for (var i = 0; i < stats.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 16),
+                        Expanded(child: _ActivityStatItem(stat: stats[i])),
+                      ],
+                    ],
                   ),
                 ],
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    for (var i = 0; i < stats.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 16),
-                      Expanded(child: _ActivityStatItem(stat: stats[i])),
-                    ],
-                  ],
-                ),
-              ],
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
@@ -629,8 +638,18 @@ class WeeklyActivityBarChart extends StatelessWidget {
     final now = DateTime.now();
     final start = now.subtract(const Duration(days: 6));
     const months = [
-      'янв.', 'фев.', 'мар.', 'апр.', 'май', 'июн.',
-      'июл.', 'авг.', 'сен.', 'окт.', 'нояб.', 'дек.',
+      'янв.',
+      'фев.',
+      'мар.',
+      'апр.',
+      'май',
+      'июн.',
+      'июл.',
+      'авг.',
+      'сен.',
+      'окт.',
+      'нояб.',
+      'дек.',
     ];
     return '${start.day} – ${now.day} ${months[now.month - 1]}';
   }
@@ -730,8 +749,7 @@ class WeeklyActivityBarChart extends StatelessWidget {
                   Expanded(
                     child: Text(
                       totalLabel ?? 'Всего: -- км',
-                      style: profileSubtitleStyle(
-                          color: ProfileColors.title),
+                      style: profileSubtitleStyle(color: ProfileColors.title),
                     ),
                   ),
                   if (changeLabel != null)

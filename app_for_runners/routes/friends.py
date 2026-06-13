@@ -2,8 +2,40 @@ from flask import Blueprint, request, jsonify
 from extensions import db
 from models import User, Friendship, UserInfo
 from utils.auth import token_required
+from utils.user_avatar import avatar_url_for
+from datetime import datetime, timezone
 
 friends_bp = Blueprint('friends', __name__)
+
+
+def _utcnow():
+    return datetime.now(timezone.utc)
+
+
+def _relationship_status(current_user_id, target_user_id):
+    if current_user_id == target_user_id:
+        return 'self'
+
+    outgoing = Friendship.query.filter_by(
+        user_id=current_user_id, friend_id=target_user_id
+    ).first()
+    if outgoing:
+        if outgoing.status == 'accepted':
+            return 'friend'
+        if outgoing.status == 'pending':
+            return 'pending_outgoing'
+
+    incoming = Friendship.query.filter_by(
+        user_id=target_user_id, friend_id=current_user_id
+    ).first()
+    if incoming:
+        if incoming.status == 'accepted':
+            return 'friend'
+        if incoming.status == 'pending':
+            return 'pending_incoming'
+
+    return 'none'
+
 
 @friends_bp.route('/api/friends', methods=['GET'])
 @token_required
@@ -16,47 +48,79 @@ def get_friends(user_id):
     friend_list = [{
         'id': friend.id_User,
         'email': friend.email,
-        'name': friend.user_info.name if friend.user_info else None
+        'name': friend.user_info.name if friend.user_info else None,
+        'avatar_url': avatar_url_for(friend.user_info),
     } for friend in friends]
 
     return jsonify(friend_list), 200
+
 
 @friends_bp.route('/api/friends/requests', methods=['GET'])
 @token_required
 def get_friend_requests(user_id):
     try:
         requests = Friendship.query.filter_by(friend_id=user_id, status='pending').all()
-        request_list = [
-            {
+        request_list = []
+        unread_count = 0
+        for req in requests:
+            sender_info = UserInfo.query.get(req.user_id)
+            is_unread = req.viewed_at is None
+            if is_unread:
+                unread_count += 1
+            request_list.append({
                 'id': req.id,
                 'fromUserId': req.user_id,
-                'fromUserName': UserInfo.query.get(req.user_id).name if UserInfo.query.get(req.user_id) else 'Неизвестный пользователь'
-            } for req in requests
-        ]
-        return jsonify(request_list), 200
+                'fromUserName': sender_info.name if sender_info else 'Неизвестный пользователь',
+                'isUnread': is_unread,
+            })
+        return jsonify({
+            'requests': request_list,
+            'unreadCount': unread_count,
+        }), 200
     except Exception as e:
         return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
+
+
+@friends_bp.route('/api/friends/requests/mark_seen', methods=['POST'])
+@token_required
+def mark_friend_requests_seen(user_id):
+    try:
+        now = _utcnow()
+        pending_requests = Friendship.query.filter_by(
+            friend_id=user_id, status='pending'
+        ).all()
+        for req in pending_requests:
+            req.viewed_at = now
+        db.session.commit()
+        return jsonify({'message': 'Friend requests marked as seen', 'unreadCount': 0}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
+
 
 @friends_bp.route('/api/friends/reject_request', methods=['POST'])
 @token_required
 def reject_friend_request(user_id):
     try:
-        data = request.get_json()
-        request_id = data.get('request_id')
-        if not request_id:
-            return jsonify({'error': 'Request ID is required'}), 400
+        data = request.get_json() or {}
+        friend_id = data.get('friend_id')
+        if not friend_id:
+            return jsonify({'error': 'Friend ID is required'}), 400
 
-        request = Friendship.query.get(request_id)
-        if not request or request.to_user_id != user_id or request.status != 'pending':
+        friendship = Friendship.query.filter_by(
+            user_id=friend_id, friend_id=user_id, status='pending'
+        ).first()
+        if not friendship:
             return jsonify({'error': 'Invalid request'}), 400
 
-        request.status = 'rejected'
+        friendship.status = 'rejected'
         db.session.commit()
 
         return jsonify({'message': 'Friend request rejected'}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
+
 
 @friends_bp.route('/api/users/search', methods=['GET'])
 @token_required
@@ -66,20 +130,30 @@ def search_users(user_id):
         if not query:
             return jsonify({'error': 'Name query parameter is required'}), 400
 
-        users = UserInfo.query.filter(UserInfo.name.ilike(f'%{query}%')).all()
+        users = (
+            UserInfo.query
+            .filter(UserInfo.name.ilike(f'%{query}%'))
+            .limit(20)
+            .all()
+        )
         user_list = []
         for user in users:
-            user_dict = {
+            if user.id_User == user_id:
+                continue
+
+            relationship = _relationship_status(user_id, user.id_User)
+            user_list.append({
                 'id': user.id_User,
-                'name': user.name
-            }
-            user_list.append(user_dict)
+                'name': user.name,
+                'relationshipStatus': relationship,
+            })
 
         if not user_list:
             return jsonify([]), 200
         return jsonify(user_list), 200
     except Exception as e:
         return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
+
 
 @friends_bp.route('/api/friends/send_request', methods=['POST'])
 @token_required
@@ -95,17 +169,23 @@ def send_friend_request(user_id):
 
     existing = Friendship.query.filter_by(user_id=user_id, friend_id=friend_id).first()
     if existing:
-        return jsonify({'error': 'Friend request already sent'}), 400
+        if existing.status == 'accepted':
+            return jsonify({'error': 'Already friends'}), 400
+        if existing.status == 'pending':
+            return jsonify({'error': 'Friend request already sent'}), 400
 
     reverse = Friendship.query.filter_by(user_id=friend_id, friend_id=user_id).first()
     if reverse and reverse.status == 'accepted':
         return jsonify({'error': 'Already friends'}), 400
+    if reverse and reverse.status == 'pending':
+        return jsonify({'error': 'Friend request already received'}), 400
 
     new_friendship = Friendship(user_id=user_id, friend_id=friend_id, status='pending')
     db.session.add(new_friendship)
     db.session.commit()
 
     return jsonify({'message': 'Friend request sent', 'friend_id': friend_id}), 201
+
 
 @friends_bp.route('/api/friends/accept_request', methods=['POST'])
 @token_required

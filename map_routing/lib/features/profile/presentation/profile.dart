@@ -39,12 +39,23 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
   bool _workoutsLoading = false;
   bool _workoutsLoaded = false;
 
+  static const _refreshCooldown = Duration(seconds: 20);
+  DateTime? _lastRefreshAt;
+
   final userService = UserService();
   final statisticsService = StatisticsService();
   final _gpxWorkoutService = GpxWorkoutService();
   FriendService? friendService;
 
-  void refreshData() {
+  void refreshData({bool force = false}) {
+    final now = DateTime.now();
+    if (!force &&
+        _lastRefreshAt != null &&
+        now.difference(_lastRefreshAt!) < _refreshCooldown) {
+      return;
+    }
+    _lastRefreshAt = now;
+
     fetchUserInfo();
     fetchStatistics();
     fetchFriendRequests();
@@ -112,6 +123,7 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
     setState(() {
       name = data['name'] ?? 'Без имени';
       country = data['country'] ?? '';
+      userAvatarUrl = data['avatar_url']?.toString() ?? '';
       isLoading = false;
     });
   }

@@ -12,6 +12,10 @@ class MapWorkoutOverlay extends StatelessWidget {
     required this.calories,
     required this.elevationM,
     required this.motionStatus,
+    this.isGuided = false,
+    this.routeRemainingKm = 0,
+    this.routeProgress = 0,
+    this.isOffRoute = false,
     required this.isLocked,
     required this.isManualPaused,
     required this.onStop,
@@ -28,6 +32,10 @@ class MapWorkoutOverlay extends StatelessWidget {
   final double calories;
   final double elevationM;
   final WorkoutMotionStatus motionStatus;
+  final bool isGuided;
+  final double routeRemainingKm;
+  final double routeProgress;
+  final bool isOffRoute;
   final bool isLocked;
   final bool isManualPaused;
   final VoidCallback onStop;
@@ -71,17 +79,32 @@ class MapWorkoutOverlay extends StatelessWidget {
           Positioned.fill(
             child: GestureDetector(
               onTap: () {},
-              child: Container(color: Colors.black.withValues(alpha: 0.08)),
+              child: Container(
+                  color: const Color.fromARGB(255, 0, 0, 0)
+                      .withValues(alpha: 0.08)),
             ),
           ),
         Positioned(
           top: top + 8,
           left: 16,
           right: 16,
-          child: _MainMetricsCard(
-            speedKmh: speedKmh,
-            distanceKm: distanceKm,
-            duration: duration,
+          child: Column(
+            children: [
+              if (isGuided)
+                _GuidedRouteBanner(
+                  remainingKm: routeRemainingKm,
+                  progress: routeProgress,
+                  isOffRoute: isOffRoute,
+                ),
+              _MainMetricsCard(
+                speedKmh: speedKmh,
+                distanceKm: distanceKm,
+                duration: duration,
+                isGuided: isGuided,
+                routeRemainingKm: routeRemainingKm,
+                routeProgress: routeProgress,
+              ),
+            ],
           ),
         ),
         Positioned(
@@ -175,16 +198,118 @@ class MapWorkoutOverlay extends StatelessWidget {
   }
 }
 
+class _GuidedRouteBanner extends StatelessWidget {
+  const _GuidedRouteBanner({
+    required this.remainingKm,
+    required this.progress,
+    required this.isOffRoute,
+  });
+
+  final double remainingKm;
+  final double progress;
+  final bool isOffRoute;
+
+  @override
+  Widget build(BuildContext context) {
+    final finished = progress >= 0.995;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: isOffRoute
+            ? const Color(0xFFFFF3E0)
+            : Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isOffRoute
+              ? MapUiColors.statusPaused
+              : MapUiColors.primaryGreen.withValues(alpha: 0.35),
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1A000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                finished
+                    ? Icons.flag_rounded
+                    : isOffRoute
+                        ? Icons.warning_amber_rounded
+                        : Icons.route_rounded,
+                color: finished
+                    ? MapUiColors.primaryGreen
+                    : isOffRoute
+                        ? MapUiColors.statusPaused
+                        : MapUiColors.primaryGreen,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  finished
+                      ? 'Маршрут пройден!'
+                      : isOffRoute
+                          ? 'Вы отклонились от маршрута'
+                          : 'Осталось ${remainingKm.toStringAsFixed(2)} км',
+                  style: GoogleFonts.lexendDeca(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: MapUiColors.title,
+                  ),
+                ),
+              ),
+              Text(
+                '${(progress * 100).round()}%',
+                style: GoogleFonts.lexendDeca(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: MapUiColors.primaryGreen,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress.clamp(0, 1),
+              minHeight: 6,
+              backgroundColor: const Color(0xFFE8E8E8),
+              color: MapUiColors.primaryGreen,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MainMetricsCard extends StatelessWidget {
   const _MainMetricsCard({
     required this.speedKmh,
     required this.distanceKm,
     required this.duration,
+    this.isGuided = false,
+    this.routeRemainingKm = 0,
+    this.routeProgress = 0,
   });
 
   final double speedKmh;
   final double distanceKm;
   final Duration duration;
+  final bool isGuided;
+  final double routeRemainingKm;
+  final double routeProgress;
 
   @override
   Widget build(BuildContext context) {
@@ -228,11 +353,16 @@ class _MainMetricsCard extends StatelessWidget {
                 child: Column(
                   children: [
                     Text(
-                      distanceKm.toStringAsFixed(2),
+                      isGuided
+                          ? routeRemainingKm.toStringAsFixed(2)
+                          : distanceKm.toStringAsFixed(2),
                       style: mapMetricValueStyle(size: 22),
                     ),
                     const SizedBox(height: 2),
-                    Text('ДИСТАНЦИЯ (КМ)', style: mapMetricLabelStyle()),
+                    Text(
+                      isGuided ? 'ОСТАЛОСЬ (КМ)' : 'ДИСТАНЦИЯ (КМ)',
+                      style: mapMetricLabelStyle(),
+                    ),
                   ],
                 ),
               ),
@@ -351,7 +481,8 @@ class _StatusButton extends StatelessWidget {
         child: SizedBox(
           width: 72,
           height: 72,
-          child: Icon(icon, color: MapUiColors.title, size: 32),
+          child:
+              Icon(icon, color: const Color.fromARGB(255, 0, 0, 0), size: 32),
         ),
       ),
     );

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:map_routing/data/services/user_service.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
+import 'package:map_routing/shared/data/countries.dart';
 
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
@@ -17,13 +18,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
   final UserService userService = UserService();
 
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _countryController = TextEditingController();
   final TextEditingController _heightController = TextEditingController();
   final TextEditingController _weightController = TextEditingController();
   final TextEditingController _ageController = TextEditingController();
 
   String _sex = 'male';
+  String _country = '';
+  List<String> _countries = List<String>.from(popularCountries);
   File? _profileImage;
+  String? _avatarUrl;
   bool _isLoading = false;
   bool _isInitialLoading = true;
 
@@ -63,13 +66,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
       if (!mounted) return;
 
       if (data != null) {
+        final country = resolveCountry(_readFieldValue(data['country']));
         setState(() {
           _nameController.text = _readFieldValue(data['name']);
-          _countryController.text = _readFieldValue(data['country']);
+          _countries = countriesForSelection(existing: country);
+          _country = country;
           _heightController.text = _readFieldValue(data['height']);
           _weightController.text = _readFieldValue(data['weight']);
           _ageController.text = _readAge(data);
           _sex = _normalizeSex(data['sex']?.toString());
+          _avatarUrl = data['avatar_url']?.toString();
           _isInitialLoading = false;
         });
       } else {
@@ -101,7 +107,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     setState(() => _isLoading = true);
 
     final name = _nameController.text.trim();
-    final country = _countryController.text.trim();
+    final country = _country;
     final height = double.tryParse(_heightController.text.trim()) ?? 0.0;
     final weight = double.tryParse(_weightController.text.trim()) ?? 0.0;
     final age = int.tryParse(_ageController.text.trim()) ?? 0;
@@ -134,6 +140,24 @@ class _EditProfilePageState extends State<EditProfilePage> {
       if (!mounted) return;
 
       if (response != null && response['success'] == true) {
+        if (_profileImage != null) {
+          final avatarUrl = await userService.uploadAvatar(_profileImage!);
+          if (!mounted) return;
+
+          if (avatarUrl == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Профиль сохранён, но не удалось загрузить фото',
+                ),
+              ),
+            );
+            Navigator.pop(context);
+            return;
+          }
+        }
+
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Профиль обновлён')),
         );
@@ -156,7 +180,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   @override
   void dispose() {
     _nameController.dispose();
-    _countryController.dispose();
     _heightController.dispose();
     _weightController.dispose();
     _ageController.dispose();
@@ -206,14 +229,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                 },
                               ),
                               const SizedBox(height: 16),
-                              AuthTextField(
+                              AuthDropdownField<String>(
                                 label: 'Страна',
-                                controller: _countryController,
-                                hint: 'Россия',
-                                prefixIcon: Icons.public_outlined,
+                                value: _country,
+                                items: buildCountryDropdownItems(_countries),
+                                onChanged: (value) =>
+                                    setState(() => _country = value ?? ''),
                                 validator: (value) {
-                                  if (value == null || value.trim().isEmpty) {
-                                    return 'Введите страну';
+                                  if (value == null || value.isEmpty) {
+                                    return 'Выберите страну';
                                   }
                                   return null;
                                 },
@@ -319,6 +343,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
+  ImageProvider _avatarImageProvider() {
+    if (_profileImage != null) {
+      return FileImage(_profileImage!);
+    }
+    if (_avatarUrl != null && _avatarUrl!.isNotEmpty) {
+      return NetworkImage(_avatarUrl!);
+    }
+    return const AssetImage('assets/images/profile.png');
+  }
+
   Widget _buildAvatar() {
     return GestureDetector(
       onTap: _pickImage,
@@ -328,10 +362,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           CircleAvatar(
             radius: 48,
             backgroundColor: Colors.grey.shade200,
-            backgroundImage: _profileImage != null
-                ? FileImage(_profileImage!)
-                : const AssetImage('assets/images/profile.png')
-                    as ImageProvider,
+            backgroundImage: _avatarImageProvider(),
           ),
           Container(
             padding: const EdgeInsets.all(6),
