@@ -104,6 +104,36 @@ def build_openapi_spec():
                         "date": {"type": "string", "format": "date"},
                     },
                 },
+                "AchievementItem": {
+                    "type": "object",
+                    "properties": {
+                        "achievement_id": {"type": "string", "example": "firstWorkout"},
+                        "unlocked_at": {"type": "string", "format": "date-time"},
+                    },
+                },
+                "AchievementSyncRequest": {
+                    "type": "object",
+                    "required": ["achievements"],
+                    "properties": {
+                        "achievements": {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/AchievementItem"},
+                        }
+                    },
+                },
+                "AchievementSyncResponse": {
+                    "type": "object",
+                    "properties": {
+                        "all": {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/AchievementItem"},
+                        },
+                        "newly_unlocked": {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/AchievementItem"},
+                        },
+                    },
+                },
                 "FriendRequestBody": {
                     "type": "object",
                     "required": ["friend_id"],
@@ -203,38 +233,6 @@ def build_openapi_spec():
                         "id_Route": {"type": "integer"},
                         "path": {"type": "object"},
                         "creation_date": {"type": "string", "format": "date-time"},
-                    },
-                },
-                "GroupRequest": {
-                    "type": "object",
-                    "required": ["name"],
-                    "properties": {
-                        "name": {"type": "string", "example": "Бегуны"},
-                        "description": {"type": "string", "example": "Группа для любителей бега"},
-                    },
-                },
-                "GroupItem": {
-                    "type": "object",
-                    "properties": {
-                        "id": {"type": "integer"},
-                        "name": {"type": "string"},
-                        "description": {"type": "string"},
-                    },
-                },
-                "MessageRequest": {
-                    "type": "object",
-                    "required": ["text"],
-                    "properties": {
-                        "text": {"type": "string", "example": "Привет всем!"},
-                    },
-                },
-                "MessageItem": {
-                    "type": "object",
-                    "properties": {
-                        "id": {"type": "integer"},
-                        "text": {"type": "string"},
-                        "sender": {"type": "string"},
-                        "timestamp": {"type": "string", "format": "date-time"},
                     },
                 },
             },
@@ -349,6 +347,41 @@ def build_openapi_spec():
                     "summary": "Добавление статистики",
                     "requestBody": {"required": True, "content": _json_content("StatisticRequest")},
                     "responses": {"200": {"description": "Статистика сохранена", "content": _json_content("MessageResponse")}},
+                },
+            },
+            "/api/user_achievements": {
+                "get": {
+                    "tags": ["Achievements"],
+                    "summary": "Получение достижений пользователя",
+                    "responses": {
+                        "200": {
+                            "description": "Список разблокированных достижений",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "array",
+                                        "items": {"$ref": "#/components/schemas/AchievementItem"},
+                                    }
+                                }
+                            },
+                        }
+                    },
+                },
+            },
+            "/api/user_achievements/sync": {
+                "post": {
+                    "tags": ["Achievements"],
+                    "summary": "Синхронизация новых достижений",
+                    "requestBody": {
+                        "required": True,
+                        "content": _json_content("AchievementSyncRequest"),
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Результат синхронизации",
+                            "content": _json_content("AchievementSyncResponse"),
+                        }
+                    },
                 },
             },
             "/api/friends": {
@@ -532,72 +565,6 @@ def build_openapi_spec():
                         "404": {"description": "Маршрут не найден"},
                     },
                 }
-            },
-            "/api/groups": {
-                "get": {
-                    "tags": ["Groups"],
-                    "summary": "Список групп пользователя",
-                    "responses": {
-                        "200": {
-                            "description": "Список групп",
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "array",
-                                        "items": {"$ref": "#/components/schemas/GroupItem"},
-                                    }
-                                }
-                            },
-                        }
-                    },
-                },
-                "post": {
-                    "tags": ["Groups"],
-                    "summary": "Создать группу",
-                    "requestBody": {"required": True, "content": _json_content("GroupRequest")},
-                    "responses": {"200": {"description": "Группа создана", "content": _json_content("MessageResponse")}},
-                },
-            },
-            "/api/groups/{group_id}/join": {
-                "post": {
-                    "tags": ["Groups"],
-                    "summary": "Присоединиться к группе",
-                    "parameters": [
-                        {"name": "group_id", "in": "path", "required": True, "schema": {"type": "integer"}}
-                    ],
-                    "responses": {"200": {"description": "Присоединение успешно", "content": _json_content("MessageResponse")}},
-                }
-            },
-            "/api/groups/{group_id}/messages": {
-                "get": {
-                    "tags": ["Groups"],
-                    "summary": "Сообщения группы",
-                    "parameters": [
-                        {"name": "group_id", "in": "path", "required": True, "schema": {"type": "integer"}}
-                    ],
-                    "responses": {
-                        "200": {
-                            "description": "Список сообщений",
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "array",
-                                        "items": {"$ref": "#/components/schemas/MessageItem"},
-                                    }
-                                }
-                            },
-                        }
-                    },
-                },
-                "post": {
-                    "tags": ["Groups"],
-                    "summary": "Отправить сообщение в группу",
-                    "parameters": [
-                        {"name": "group_id", "in": "path", "required": True, "schema": {"type": "integer"}}
-                    ],
-                    "requestBody": {"required": True, "content": _json_content("MessageRequest")},
-                    "responses": {"200": {"description": "Сообщение отправлено", "content": _json_content("MessageResponse")}},
-                },
             },
         },
     }

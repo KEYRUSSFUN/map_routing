@@ -1,8 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:map_routing/core/navigation/open_user_profile.dart';
+import 'package:map_routing/core/widgets/user_avatar.dart';
 import 'package:map_routing/data/models/chat_participant.dart';
 import 'package:map_routing/data/services/group_service.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
+import 'package:map_routing/features/chat/widgets/add_chat_members_sheet.dart';
+import 'package:map_routing/features/chat/widgets/chat_confirm_dialog.dart';
 import 'package:map_routing/features/profile/presentation/user_profile_page.dart';
 
 class ChatParticipantsSheet extends StatefulWidget {
@@ -27,7 +34,7 @@ class ChatParticipantsSheet extends StatefulWidget {
   final String? creatorName;
   final String? currentUserId;
   final VoidCallback? onParticipantsChanged;
-  final VoidCallback? onChatDeleted;
+  final void Function(String chatId)? onChatDeleted;
 
   static Future<void> show(
     BuildContext context, {
@@ -39,7 +46,7 @@ class ChatParticipantsSheet extends StatefulWidget {
     String? creatorName,
     required String? currentUserId,
     VoidCallback? onParticipantsChanged,
-    VoidCallback? onChatDeleted,
+    void Function(String chatId)? onChatDeleted,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -79,52 +86,63 @@ class _ChatParticipantsSheetState extends State<ChatParticipantsSheet> {
         creatorId == currentUserId;
   }
 
-  String? get _creatorName =>
-      widget.creatorName ?? ChatParticipant.creatorNameFrom(widget.participants);
-
   @override
   void initState() {
     super.initState();
-    _participants = ChatParticipant.fromJsonList(
-      widget.participants
-          .map((p) => {
-                'id': p.userId,
-                'name': p.name,
-                'isCreator': p.isCreator,
-              })
-          .toList(),
-      creatorId: widget.creatorId,
+    _participants = List<ChatParticipant>.from(widget.participants);
+    unawaited(_reloadParticipants());
+  }
+
+  Future<void> _reloadParticipants() async {
+    try {
+      final details = await widget.chatService.getChatDetails(widget.chatId);
+      if (!mounted) return;
+      setState(() {
+        _participants = ChatParticipant.fromJsonList(
+          details['participants'],
+          creatorId: widget.creatorId,
+        );
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _openAddMembers() async {
+    if (_isProcessing) return;
+
+    final existingIds = _participants
+        .map((participant) => participant.userId)
+        .whereType<String>()
+        .toSet();
+
+    await AddChatMembersSheet.show(
+      context,
+      chatId: widget.chatId,
+      chatService: widget.chatService,
+      existingMemberIds: existingIds,
+      onMembersAdded: () async {
+        await _reloadParticipants();
+        widget.onParticipantsChanged?.call();
+      },
     );
+
+    if (!mounted) return;
+    await _reloadParticipants();
   }
 
   Future<void> _removeMember(ChatParticipant participant) async {
     final memberId = participant.userId;
     if (memberId == null || _isProcessing) return;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Исключить участника?'),
-        content: Text(
-          '${participant.name} будет удалён из группы.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Исключить',
-              style: TextStyle(color: Colors.redAccent),
-            ),
-          ),
-        ],
-      ),
+    final confirmed = await ChatConfirmDialog.show(
+      context,
+      title: 'Исключить участника?',
+      message: '${participant.name} будет удалён из группы.',
+      confirmLabel: 'Исключить',
+      destructive: true,
+      icon: Icons.person_remove_outlined,
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     setState(() => _isProcessing = true);
     try {
@@ -135,61 +153,55 @@ class _ChatParticipantsSheetState extends State<ChatParticipantsSheet> {
         _isProcessing = false;
       });
       widget.onParticipantsChanged?.call();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Участник исключён')),
-      );
+      AppSnackBar.show(context, 'Участник исключён');
     } catch (e) {
       if (!mounted) return;
       setState(() => _isProcessing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
-      );
+      AppSnackBar.show(context, 'Ошибка: $e');
     }
   }
 
   Future<void> _deleteChat() async {
     if (_isProcessing) return;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Удалить группу?'),
-        content: const Text(
-          'Чат и все сообщения будут удалены без возможности восстановления.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Удалить',
-              style: TextStyle(color: Colors.redAccent),
-            ),
-          ),
-        ],
-      ),
+    final confirmed = await ChatConfirmDialog.show(
+      context,
+      title: 'Удалить группу?',
+      message:
+          'Чат «${widget.title}» и все сообщения будут удалены без возможности восстановления.',
+      confirmLabel: 'Удалить',
+      destructive: true,
+      icon: Icons.delete_outline_rounded,
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
+    final snackHost = AppSnackBarHost.maybeOf(context);
     setState(() => _isProcessing = true);
     try {
       await widget.chatService.deleteChat(widget.chatId);
       if (!mounted) return;
+
+      final chatId = widget.chatId;
       Navigator.pop(context);
-      widget.onChatDeleted?.call();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Группа удалена')),
-      );
+      widget.onChatDeleted?.call(chatId);
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        snackHost?.show(
+          'Группа удалена',
+          variant: AppSnackBarVariant.success,
+          displayDuration: const Duration(milliseconds: 2800),
+          fadeInDuration: const Duration(milliseconds: 280),
+          fadeOutDuration: const Duration(milliseconds: 420),
+        );
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => _isProcessing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
-      );
+      final message = e is Exception
+          ? e.toString().replaceFirst('Exception: ', '')
+          : e.toString();
+      AppSnackBar.show(context, 'Не удалось удалить группу: $message');
     }
   }
 
@@ -203,29 +215,44 @@ class _ChatParticipantsSheetState extends State<ChatParticipantsSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              widget.title,
-              style: GoogleFonts.lexendDeca(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AuthColors.title,
-              ),
-            ),
-            if (_creatorName != null && _creatorName!.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Создатель: $_creatorName',
-                style: authSubtitleStyle().copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: AuthColors.primaryGreen,
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.title,
+                    style: GoogleFonts.lexendDeca(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AuthColors.title,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+                Material(
+                  color: AuthColors.primaryGreen.withValues(alpha: 0.14),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: _isProcessing ? null : _openAddMembers,
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Icon(
+                        Icons.person_add_outlined,
+                        color: AuthColors.primaryGreen,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 12),
             if (_participants.isEmpty)
               Text('Нет данных по участникам', style: authSubtitleStyle())
             else
-              Flexible(
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.45,
+                ),
                 child: ListView.separated(
                   shrinkWrap: true,
                   itemCount: _participants.length,
@@ -239,17 +266,19 @@ class _ChatParticipantsSheetState extends State<ChatParticipantsSheet> {
 
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: CircleAvatar(
-                        backgroundColor:
-                            AuthColors.primaryGreen.withValues(alpha: 0.18),
-                        child: Text(
-                          participant.name.isEmpty
-                              ? '?'
-                              : participant.name[0].toUpperCase(),
-                          style: GoogleFonts.lexendDeca(
-                            fontWeight: FontWeight.w700,
-                            color: AuthColors.title,
-                          ),
+                      leading: SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: UserAvatar(
+                          name: participant.name,
+                          avatarUrl: participant.avatarUrl,
+                          radius: 20,
+                          onTap: participant.userId == null
+                              ? null
+                              : () => openUserProfile(
+                                    context,
+                                    participant.userId!,
+                                  ),
                         ),
                       ),
                       title: Row(

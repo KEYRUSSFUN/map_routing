@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:map_routing/core/network/config.dart';
 import 'package:map_routing/features/auth/data/auth_local_storage.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
@@ -78,9 +79,7 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/home');
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: ${response.body}')),
-      );
+      AppSnackBar.show(context, 'Ошибка: ${response.body}');
     }
   }
 

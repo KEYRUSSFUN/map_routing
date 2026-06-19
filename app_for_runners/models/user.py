@@ -4,8 +4,10 @@ from flask_login import UserMixin
 class User(db.Model, UserMixin):
     __tablename__ = 'users'
     id_User = db.Column(db.Integer, primary_key=True)
-    password = db.Column(db.String(255), nullable=False)
+    password = db.Column(db.String(255), nullable=True)
     email = db.Column(db.String(100), nullable=False)
+    google_id = db.Column(db.String(128), nullable=True, unique=True)
+    last_seen_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     user_info = db.relationship("UserInfo", back_populates="user", uselist=False)
     group_chats = db.relationship('GroupChat', secondary='user_group_chat', back_populates="members")

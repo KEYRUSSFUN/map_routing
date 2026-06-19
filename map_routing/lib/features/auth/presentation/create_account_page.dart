@@ -1,8 +1,11 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:map_routing/core/widgets/app_snackbar.dart';
+import 'package:map_routing/data/services/google_auth_service.dart';
 import 'package:map_routing/data/services/registration_service.dart';
 import 'package:map_routing/features/auth/data/auth_local_storage.dart';
+import 'package:map_routing/features/auth/presentation/auth_flow.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
 import 'package:map_routing/features/auth/presentation/complete_profile_page.dart';
 import 'package:map_routing/shared/utils/validators.dart';
@@ -26,7 +29,10 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
 
   bool _acceptedTerms = false;
   bool _isLoading = false;
+  final _googleLoading = ValueNotifier<bool>(false);
   String? _termsError;
+
+  final GoogleAuthService _googleAuthService = GoogleAuthService();
 
   Future<void> _register() async {
     if (!_acceptedTerms) {
@@ -44,19 +50,20 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
     final email = _emailController.text;
     final password = _passwordController.text;
 
-    final registrationResult =
+    final registrationError =
         await _registrationService.registerUser(email, password);
 
     if (!mounted) return;
 
-    if (registrationResult) {
+    if (registrationError == null) {
       await AuthLocalStorage.savePendingFullName(_nameController.text.trim());
-      final token = await _registrationService.loginUser(email, password);
+      final loginResult = await _registrationService.loginUser(email, password);
 
       if (!mounted) return;
 
       setState(() => _isLoading = false);
 
+      final token = loginResult.token;
       if (token != null) {
         Navigator.pushReplacement(
           context,
@@ -70,19 +77,18 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
+      AppSnackBar.show(
+        context,
+        loginResult.error ??
             'Аккаунт создан. Войдите, чтобы заполнить профиль.',
-          ),
-        ),
+        variant: loginResult.error == null
+            ? AppSnackBarVariant.success
+            : AppSnackBarVariant.error,
       );
       Navigator.pushReplacementNamed(context, '/login_page');
     } else {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ошибка регистрации. Попробуйте снова.')),
-      );
+      AppSnackBar.show(context, registrationError);
     }
   }
 
@@ -92,7 +98,23 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _googleLoading.dispose();
     super.dispose();
+  }
+
+  Future<void> _signInWithGoogle() async {
+    if (!_acceptedTerms) {
+      setState(() {
+        _termsError = 'Примите условия использования';
+      });
+      return;
+    }
+
+    await AuthFlow.handleGoogleSignIn(
+      context,
+      googleAuthService: _googleAuthService,
+      loadingNotifier: _googleLoading,
+    );
   }
 
   @override
@@ -182,7 +204,17 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
                 const SizedBox(height: 24),
                 const AuthDivider(label: 'или зарегистрируйтесь с помощью'),
                 const SizedBox(height: 16),
-                const AuthSocialButtons(),
+                ValueListenableBuilder<bool>(
+                  valueListenable: _googleLoading,
+                  builder: (context, googleLoading, _) {
+                    return AuthSocialButtons(
+                      isGoogleLoading: googleLoading,
+                      onGooglePressed: _googleAuthService.isConfigured
+                          ? _signInWithGoogle
+                          : null,
+                    );
+                  },
+                ),
                 const SizedBox(height: 24),
                 AuthFooterLink(
                   prefix: 'Уже есть аккаунт? ',

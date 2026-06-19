@@ -3,6 +3,7 @@ from datetime import datetime
 from extensions import db
 from models import UserStatistic
 from utils.auth import token_required
+from utils.user_info_helper import ensure_user_info_exists
 
 statistics_bp = Blueprint('statistics', __name__)
 
@@ -16,6 +17,7 @@ def add_user_statistic(user_id):
         return jsonify({'error': 'Missing fields'}), 400
 
     try:
+        ensure_user_info_exists(user_id)
         date_obj = datetime.strptime(data['date'], '%Y-%m-%d').date()
 
         existing_stat = UserStatistic.query.filter_by(id_User=user_id, date=date_obj).first()

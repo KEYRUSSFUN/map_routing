@@ -89,13 +89,24 @@ class MapWorkoutOverlay extends StatelessWidget {
           left: 16,
           right: 16,
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (isGuided)
+              Align(
+                alignment: Alignment.centerRight,
+                child: _MinimizeButton(
+                  isLocked: isLocked,
+                  onPressed: onMinimize,
+                ),
+              ),
+              if (isGuided) ...[
+                const SizedBox(height: 8),
                 _GuidedRouteBanner(
                   remainingKm: routeRemainingKm,
                   progress: routeProgress,
                   isOffRoute: isOffRoute,
                 ),
+              ],
+              const SizedBox(height: 8),
               _MainMetricsCard(
                 speedKmh: speedKmh,
                 distanceKm: distanceKm,
@@ -180,20 +191,32 @@ class MapWorkoutOverlay extends StatelessWidget {
             ],
           ),
         ),
-        Positioned(
-          top: top + 8,
-          right: 8,
-          child: Material(
-            color: Colors.white.withValues(alpha: 0.9),
-            shape: const CircleBorder(),
-            child: IconButton(
-              tooltip: 'Свернуть',
-              onPressed: isLocked ? null : onMinimize,
-              icon: const Icon(Icons.open_in_full_rounded, size: 20),
-            ),
-          ),
-        ),
       ],
+    );
+  }
+}
+
+class _MinimizeButton extends StatelessWidget {
+  const _MinimizeButton({
+    required this.isLocked,
+    required this.onPressed,
+  });
+
+  final bool isLocked;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.9),
+      shape: const CircleBorder(),
+      elevation: 2,
+      shadowColor: Colors.black26,
+      child: IconButton(
+        tooltip: 'Свернуть',
+        onPressed: isLocked ? null : onPressed,
+        icon: const Icon(Icons.open_in_full_rounded, size: 20),
+      ),
     );
   }
 }
@@ -215,7 +238,6 @@ class _GuidedRouteBanner extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         color: isOffRoute

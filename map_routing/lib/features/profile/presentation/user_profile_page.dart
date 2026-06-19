@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:map_routing/core/navigation/app_route_observer.dart';
+import 'package:map_routing/data/models/achievement.dart';
+import 'package:map_routing/data/services/achievement_service.dart';
 import 'package:map_routing/data/services/statistics_service.dart';
 import 'package:map_routing/data/services/user_service.dart';
-import 'package:map_routing/features/auth/presentation/auth_ui.dart';
 import 'package:map_routing/features/profile/presentation/profile_ui.dart';
+import 'package:map_routing/features/profile/widgets/achievement_details_sheet.dart';
 
 class UserProfilePage extends StatefulWidget {
   final String userId;
@@ -23,13 +27,19 @@ class UserProfilePageState extends State<UserProfilePage> with RouteAware {
   int? steps;
   double? calories;
   String? _weekChangeLabel;
-  late Future<List<double>> weeklyActivityDataFuture;
+  List<double>? _weeklyActivityData;
+  bool _weeklyStatsLoading = false;
 
   bool isLoading = true;
   ProfileTab _selectedTab = ProfileTab.statistics;
 
+  List<AchievementStatus> _achievements = [];
+  bool _achievementsLoading = false;
+  final _allAchievementsKey = GlobalKey();
+
   final userService = UserService();
   final statisticsService = StatisticsService();
+  final _achievementService = AchievementService();
 
   Future<void> fetchUserInfo() async {
     final data = await userService.fetchOtherUserInfo(userId: widget.userId);
@@ -49,31 +59,31 @@ class UserProfilePageState extends State<UserProfilePage> with RouteAware {
       name = data['name'] ?? 'Без имени';
       country = data['country'] ?? '';
       userAvatarUrl = data['avatar_url']?.toString() ?? '';
+      isLoading = false;
     });
   }
 
   Future<void> fetchStatistics() async {
+    if (_weeklyActivityData == null && mounted) {
+      setState(() => _weeklyStatsLoading = true);
+    }
+
     try {
-      final summary =
-          await statisticsService.fetchAllWeeklyStats(userId: widget.userId);
-      final rawData =
-          await statisticsService.fetchWeeklyStats(userId: widget.userId);
-      final weekChange = await statisticsService.fetchWeekOverWeekChangePercent(
+      final snapshot = await statisticsService.fetchProfileSnapshot(
         userId: widget.userId,
       );
-
-      final distancePerDay =
-          rawData.map((day) => (day['distance'] as double?) ?? 0.0).toList();
 
       if (!mounted) return;
 
       setState(() {
-        distance = summary.distanceKm;
-        steps = summary.steps;
-        calories = summary.calories;
-        _weekChangeLabel =
-            StatisticsService.formatWeekChangeLabel(weekChange);
-        weeklyActivityDataFuture = Future.value(distancePerDay);
+        distance = snapshot.totals.distanceKm;
+        steps = snapshot.totals.steps;
+        calories = snapshot.totals.calories;
+        _weekChangeLabel = StatisticsService.formatWeekChangeLabel(
+          snapshot.weekOverWeekChangePercent,
+        );
+        _weeklyActivityData = snapshot.dailyDistanceMeters;
+        _weeklyStatsLoading = false;
         isLoading = false;
       });
     } catch (_) {
@@ -83,23 +93,43 @@ class UserProfilePageState extends State<UserProfilePage> with RouteAware {
         steps = 0;
         calories = 0;
         _weekChangeLabel = 'Нет данных';
-        weeklyActivityDataFuture = Future.value(const [0, 0, 0, 0, 0, 0, 0]);
+        _weeklyActivityData = const [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        _weeklyStatsLoading = false;
         isLoading = false;
       });
+    }
+  }
+
+  Future<void> _loadAchievements({bool force = false}) async {
+    if (_achievementsLoading) return;
+    if (!force && _achievements.isNotEmpty) return;
+
+    setState(() => _achievementsLoading = true);
+
+    try {
+      final achievements =
+          await _achievementService.fetchForUser(userId: widget.userId);
+      if (!mounted) return;
+      setState(() {
+        _achievements = achievements;
+        _achievementsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _achievementsLoading = false);
     }
   }
 
   @override
   void initState() {
     super.initState();
-    weeklyActivityDataFuture = Future.value(const []);
-    _loadData();
+    unawaited(_loadData());
   }
 
   Future<void> _loadData() async {
-    setState(() => isLoading = true);
     await fetchUserInfo();
-    await fetchStatistics();
+    if (!mounted) return;
+    unawaited(fetchStatistics());
   }
 
   @override
@@ -119,7 +149,7 @@ class UserProfilePageState extends State<UserProfilePage> with RouteAware {
 
   @override
   void didPopNext() {
-    _loadData();
+    unawaited(_loadData());
   }
 
   List<ProfileStatPillData> get _statPills => [
@@ -143,7 +173,7 @@ class UserProfilePageState extends State<UserProfilePage> with RouteAware {
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) {
+    if (isLoading && name.isEmpty) {
       return const Scaffold(
         backgroundColor: ProfileColors.scaffoldBg,
         body: Center(child: CircularProgressIndicator()),
@@ -166,7 +196,12 @@ class UserProfilePageState extends State<UserProfilePage> with RouteAware {
             ),
             ProfileTabBar(
               selected: _selectedTab,
-              onChanged: (tab) => setState(() => _selectedTab = tab),
+              onChanged: (tab) {
+                setState(() => _selectedTab = tab);
+                if (tab == ProfileTab.achievements && _achievements.isEmpty) {
+                  unawaited(_loadAchievements());
+                }
+              },
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -183,9 +218,7 @@ class UserProfilePageState extends State<UserProfilePage> with RouteAware {
       case ProfileTab.statistics:
         return _buildStatisticsTab();
       case ProfileTab.achievements:
-        return _buildEmptyTab(
-          'Достижения пользователя пока недоступны',
-        );
+        return _buildAchievementsTab();
       case ProfileTab.history:
         return _buildEmptyTab(
           'История активности этого пользователя пока недоступна',
@@ -198,7 +231,8 @@ class UserProfilePageState extends State<UserProfilePage> with RouteAware {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         WeeklyActivityBarChart(
-          weeklyDataFuture: weeklyActivityDataFuture,
+          weeklyData: _weeklyActivityData,
+          isLoading: _weeklyStatsLoading,
           totalLabel: distance != null && distance! > 0
               ? 'Всего: ${distance!.toStringAsFixed(1)} км'
               : 'Всего: -- км',
@@ -215,6 +249,91 @@ class UserProfilePageState extends State<UserProfilePage> with RouteAware {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildAchievementsTab() {
+    if (!_achievementsLoadedOrLoading()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadAchievements());
+    }
+
+    if (_achievementsLoading && _achievements.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final recent = _achievementService.recentUnlocked(_achievements);
+    final unlockedCount =
+        _achievements.where((achievement) => achievement.unlocked).length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ProfileSectionHeader(
+          title: 'Недавние достижения',
+          trailing: _achievements.length > 4 ? 'Смотреть все' : null,
+          onTrailingTap: () {
+            final target = _allAchievementsKey.currentContext;
+            if (target != null) {
+              Scrollable.ensureVisible(
+                target,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+              );
+            }
+          },
+        ),
+        const SizedBox(height: 16),
+        if (recent.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'У пользователя пока нет достижений.',
+              textAlign: TextAlign.center,
+              style: profileSubtitleStyle(),
+            ),
+          )
+        else
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            alignment: WrapAlignment.start,
+            children: recent
+                .map((status) => _buildAchievementBadge(status))
+                .toList(),
+          ),
+        const SizedBox(height: 24),
+        ProfileSectionHeader(
+          key: _allAchievementsKey,
+          title: 'Все достижения',
+          trailing: '$unlockedCount/${_achievements.length}',
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 12,
+          runSpacing: 16,
+          alignment: WrapAlignment.spaceAround,
+          children: _achievements
+              .map((status) => _buildAchievementBadge(status))
+              .toList(),
+        ),
+      ],
+    );
+  }
+
+  bool _achievementsLoadedOrLoading() =>
+      _achievements.isNotEmpty || _achievementsLoading;
+
+  Widget _buildAchievementBadge(AchievementStatus status) {
+    return GestureDetector(
+      onTap: () => AchievementDetailsSheet.show(context, status: status),
+      child: AchievementBadge(
+        icon: status.definition.icon,
+        label: status.definition.title,
+        locked: !status.unlocked,
+      ),
     );
   }
 

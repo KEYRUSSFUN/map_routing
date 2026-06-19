@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:map_routing/core/network/config.dart';
+import 'package:map_routing/data/services/google_auth_service.dart';
 import 'package:map_routing/data/services/registration_service.dart';
+import 'package:map_routing/features/auth/presentation/auth_flow.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
-import 'package:map_routing/features/auth/presentation/complete_profile_page.dart';
 import 'package:map_routing/features/auth/presentation/create_account_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -18,35 +16,18 @@ class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _googleLoading = ValueNotifier<bool>(false);
   bool _isLoading = false;
   String? _errorMessage;
 
   final registrationService = RegistrationService();
-
-  Future<bool> _needsProfileCompletion(String token) async {
-    final checkResponse = await http.get(
-      Uri.parse('$backendBaseUrl/api/user_info/check'),
-      headers: {'Authorization': token},
-    );
-
-    if (checkResponse.statusCode == 404) {
-      return true;
-    }
-
-    if (checkResponse.statusCode == 200) {
-      final data = jsonDecode(checkResponse.body);
-      if (data is Map<String, dynamic>) {
-        return data['filled'] != true;
-      }
-    }
-
-    return false;
-  }
+  final googleAuthService = GoogleAuthService();
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _googleLoading.dispose();
     super.dispose();
   }
 
@@ -61,30 +42,37 @@ class _LoginPageState extends State<LoginPage> {
     final email = _emailController.text;
     final password = _passwordController.text;
 
-    final token = await registrationService.loginUser(email, password);
+    final loginResult = await registrationService.loginUser(email, password);
 
     if (!mounted) return;
 
     setState(() => _isLoading = false);
 
+    final token = loginResult.token;
     if (token != null) {
-      final needsProfile = await _needsProfileCompletion(token);
-
-      if (!mounted) return;
-
-      if (needsProfile) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => CompleteProfilePage(token: token)),
-        );
-      } else {
-        Navigator.pushReplacementNamed(context, '/home');
+      try {
+        await AuthFlow.continueAfterAuth(context, token: token);
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _errorMessage = e.toString().replaceFirst('Exception: ', '');
+        });
       }
-    } else {
-      setState(() {
-        _errorMessage = 'Ошибка входа. Неверный email или пароль';
-      });
+      return;
     }
+
+    setState(() {
+      _errorMessage =
+          loginResult.error ?? 'Ошибка входа. Неверный email или пароль';
+    });
+  }
+
+  Future<void> _signInWithGoogle() async {
+    await AuthFlow.handleGoogleSignIn(
+      context,
+      googleAuthService: googleAuthService,
+      loadingNotifier: _googleLoading,
+    );
   }
 
   @override
@@ -167,7 +155,17 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(height: 24),
                 const AuthDivider(label: 'или продолжите с помощью'),
                 const SizedBox(height: 16),
-                const AuthSocialButtons(),
+                ValueListenableBuilder<bool>(
+                  valueListenable: _googleLoading,
+                  builder: (context, googleLoading, _) {
+                    return AuthSocialButtons(
+                      isGoogleLoading: googleLoading,
+                      onGooglePressed: googleAuthService.isConfigured
+                          ? _signInWithGoogle
+                          : null,
+                    );
+                  },
+                ),
                 const SizedBox(height: 24),
                 AuthFooterLink(
                   prefix: 'Нет аккаунта? ',

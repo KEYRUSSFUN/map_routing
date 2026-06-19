@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:map_routing/data/models/chat.dart';
 import 'package:map_routing/data/models/friend.dart';
 import 'package:map_routing/data/services/group_service.dart';
+import 'package:map_routing/core/navigation/open_user_profile.dart';
 import 'package:map_routing/core/widgets/user_avatar.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
 import 'package:map_routing/features/profile/presentation/profile_ui.dart';
@@ -13,20 +15,17 @@ class CreateChatDialog extends StatefulWidget {
     required this.friends,
     required this.chatService,
     required this.onChatCreated,
-    required this.currentUserId,
   });
 
   final List<Friend> friends;
   final GroupChatService chatService;
   final void Function(Chat newChat) onChatCreated;
-  final String currentUserId;
 
   static Future<void> show(
     BuildContext context, {
     required List<Friend> friends,
     required GroupChatService chatService,
     required void Function(Chat newChat) onChatCreated,
-    required String currentUserId,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -38,7 +37,6 @@ class CreateChatDialog extends StatefulWidget {
           friends: friends,
           chatService: chatService,
           onChatCreated: onChatCreated,
-          currentUserId: currentUserId,
         ),
       ),
     );
@@ -62,21 +60,12 @@ class _CreateChatDialogState extends State<CreateChatDialog> {
   Future<void> _create() async {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Введите название группы')),
-      );
+      AppSnackBar.show(context, 'Введите название группы');
       return;
     }
 
-    final participants = <String>{
-      widget.currentUserId,
-      ..._selectedFriendIds,
-    };
-
-    if (participants.length < 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Выберите хотя бы одного участника')),
-      );
+    if (_selectedFriendIds.isEmpty) {
+      AppSnackBar.show(context, 'Выберите хотя бы одного участника');
       return;
     }
 
@@ -84,15 +73,13 @@ class _CreateChatDialogState extends State<CreateChatDialog> {
     try {
       final newChat = await widget.chatService.createGroupChat(
         title,
-        participants.toList(),
+        _selectedFriendIds.toList(),
       );
       widget.onChatCreated(newChat);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
-      );
+      AppSnackBar.show(context, 'Ошибка: $e');
     } finally {
       if (mounted) setState(() => _isCreating = false);
     }
@@ -203,6 +190,8 @@ class _CreateChatDialogState extends State<CreateChatDialog> {
                                   UserAvatar(
                                     name: friend.name,
                                     avatarUrl: friend.avatarUrl,
+                                    onTap: () =>
+                                        openUserProfile(context, friend.id),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(

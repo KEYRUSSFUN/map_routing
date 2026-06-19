@@ -1,9 +1,10 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:map_routing/main.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:xml/xml.dart';
+import 'package:map_routing/data/services/user_workout_storage.dart';
 import 'package:path/path.dart' as p;
+import 'package:xml/xml.dart';
 
 class GpxRouteListPage extends StatefulWidget {
   const GpxRouteListPage({super.key});
@@ -14,6 +15,7 @@ class GpxRouteListPage extends StatefulWidget {
 
 class _GpxRouteListPageState extends State<GpxRouteListPage> {
   List<_GpxRoute> _routes = [];
+  bool _loadingDetails = false;
 
   @override
   void initState() {
@@ -22,32 +24,46 @@ class _GpxRouteListPageState extends State<GpxRouteListPage> {
   }
 
   Future<void> _loadRoutes() async {
-    final directory = await getExternalStorageDirectory();
-    if (directory == null) {
-      print("Не удалось получить доступ к внешнему хранилищу.");
-      return;
+    final gpxFiles = await UserWorkoutStorage.instance.listUserGpxFiles();
+
+    final placeholders = gpxFiles
+        .map(
+          (file) => _GpxRoute(
+            name: p.basenameWithoutExtension(file.path),
+            path: file.path,
+          ),
+        )
+        .toList();
+
+    if (!mounted) return;
+    setState(() {
+      _routes = placeholders;
+      _loadingDetails = placeholders.isNotEmpty;
+    });
+
+    if (placeholders.isEmpty) return;
+
+    for (var i = 0; i < placeholders.length; i++) {
+      if (!mounted) break;
+      final enriched = await _loadRouteDetails(placeholders[i]);
+      if (!mounted) break;
+      setState(() {
+        _routes[i] = enriched;
+      });
     }
-    final userpath = directory.path;
 
-    final dir = Directory(userpath);
-    final gpxFiles =
-        dir.listSync().where((file) => file.path.endsWith('.gpx')).toList();
+    if (mounted) {
+      setState(() => _loadingDetails = false);
+    }
+  }
 
-    final routes = <_GpxRoute>[];
-
-    for (var file in gpxFiles) {
-      final filePath = file.path;
-
-      final fileExists = await File(filePath).exists();
-      if (!fileExists) {
-        print("Файл не существует: $filePath");
-        continue;
-      }
+  Future<_GpxRoute> _loadRouteDetails(_GpxRoute route) async {
+    try {
+      final filePath = route.path;
+      if (!await File(filePath).exists()) return route;
 
       final xmlString = await File(filePath).readAsString();
       final doc = XmlDocument.parse(xmlString);
-
-      final name = p.basenameWithoutExtension(filePath);
 
       final trkpts = doc.findAllElements('trkpt');
       final times = trkpts
@@ -74,72 +90,85 @@ class _GpxRouteListPageState extends State<GpxRouteListPage> {
         duration = times.last.difference(times.first);
       }
 
-      routes.add(_GpxRoute(
-        name: name,
+      return _GpxRoute(
+        name: route.name,
         duration: duration,
         path: filePath,
         date: metadataTime,
-      ));
+      );
+    } catch (_) {
+      return route;
     }
-
-    setState(() {
-      _routes = routes;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Список маршрутов')),
-      body: ListView.builder(
-        itemCount: _routes.length,
-        itemBuilder: (context, index) {
-          final route = _routes[index];
-          return ListTile(
-              leading: const Icon(Icons.route),
-              title: Text(route.name),
-              subtitle: route.duration != null
-                  ? Text("Длительность: ${_formatDuration(route.duration!)}")
-                  : route.date != null
-                      ? Text("Дата: ${_formatDate(route.date!)}")
-                      : const Text("Время не указано"),
-              onTap: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) {
-                      print("Открываю маршрут с путем: ${route.path}");
-                      return MapkitFlutterApp(initialGpxPath: route.path);
-                    },
-                  ),
-                );
-              });
-        },
+      appBar: AppBar(
+        title: const Text('Список маршрутов'),
+        actions: [
+          if (_loadingDetails)
+            const Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+        ],
       ),
+      body: _routes.isEmpty
+          ? const Center(child: Text('Нет сохранённых маршрутов'))
+          : ListView.builder(
+              itemCount: _routes.length,
+              itemBuilder: (context, index) {
+                final route = _routes[index];
+                return ListTile(
+                  leading: const Icon(Icons.route),
+                  title: Text(route.name),
+                  subtitle: route.duration != null
+                      ? Text('Длительность: ${_formatDuration(route.duration!)}')
+                      : route.date != null
+                          ? Text('Дата: ${_formatDate(route.date!)}')
+                          : const Text('Загрузка деталей...'),
+                  onTap: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MapkitFlutterApp(initialGpxPath: route.path),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
     );
   }
 
   String _formatDate(DateTime d) {
-    return "${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}";
+    return '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
   }
 
   String _formatDuration(Duration d) {
     final hours = d.inHours;
     final minutes = d.inMinutes.remainder(60);
-    return "$hoursч $minutesм";
+    return '$hoursч $minutesм';
   }
 }
 
 class _GpxRoute {
   final String name;
   final Duration? duration;
-  final DateTime? date;
   final String path;
+  final DateTime? date;
 
   _GpxRoute({
     required this.name,
+    required this.path,
     this.duration,
     this.date,
-    required this.path,
   });
 }

@@ -1,15 +1,12 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
+
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:map_routing/data/models/track_point.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:map_routing/data/services/user_workout_storage.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:xml/xml.dart';
 import 'package:yandex_maps_mapkit/mapkit.dart';
-import 'package:path/path.dart' as p;
-import 'package:http_parser/http_parser.dart';
-import 'package:http/http.dart' as http;
-import 'dart:core';
 
 class GeometryProvider {
   static const startPosition = CameraPosition(
@@ -41,50 +38,44 @@ class GeometryProvider {
         .catchError((_) => false);
   }
 
-  static Future<void> loadGPXPoints(BuildContext context,
-      {required String gpxPath}) async {
+  static Future<void> loadGPXPoints(
+    void Function(String message) onError, {
+    required String gpxPath,
+  }) async {
     if (gpxPath.isEmpty) {
       defaultPoints = [];
       return;
     }
 
     try {
-      defaultPoints = await loadAndParseGPX(context, gpxPath);
+      defaultPoints = await loadAndParseGPX(gpxPath);
+      if (defaultPoints.isEmpty) {
+        onError('Ошибка загрузки GPX');
+      }
     } catch (e) {
       defaultPoints = [];
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка загрузки точек из GPX: $e')),
-      );
+      onError('Ошибка загрузки точек из GPX: $e');
     }
   }
 
-  static Future<List<Point>> loadAndParseGPX(
-      BuildContext context, String gpxPath) async {
-    try {
-      final gpxData = await _loadGPXFile(gpxPath);
-      if (gpxData == null) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Ошибка загрузки GPX')));
-        return [];
-      }
-      return await _parseGPXData(gpxData);
-    } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Ошибка обработки GPX: $e')));
+  static Future<List<Point>> loadAndParseGPX(String gpxPath) async {
+    final gpxData = await _loadGPXFile(gpxPath);
+    if (gpxData == null) {
       return [];
     }
+    return _parseGPXData(gpxData);
   }
 
   static Future<String?> _loadGPXFile(String gpxPath) async {
     try {
       final file = File(gpxPath);
       if (!await file.exists()) {
-        print('Файл не существует');
+        debugPrint('Файл не существует');
         return null;
       }
       return await file.readAsString();
     } catch (e) {
-      print('Ошибка при чтении GPX-файла: $e');
+      debugPrint('Ошибка при чтении GPX-файла: $e');
       return null;
     }
   }
@@ -121,9 +112,8 @@ class GeometryProvider {
       });
     });
 
-    final directory = await getExternalStorageDirectory();
-    final filePath =
-        '${directory?.path}/tracked_route_${DateTime.now().millisecondsSinceEpoch}.gpx';
+    final filePath = await UserWorkoutStorage.instance.newGpxFilePath('tracked_route');
+    if (filePath == null) return null;
     final file = File(filePath);
     await file.writeAsString(builder.buildDocument().toXmlString(pretty: true));
     return filePath;
@@ -141,7 +131,7 @@ class GeometryProvider {
               ))
           .toList());
     } catch (e) {
-      print("Ошибка парсинга: $e");
+      debugPrint('Ошибка парсинга: $e');
     }
     return points;
   }
@@ -173,9 +163,8 @@ class GeometryProvider {
     });
 
     final gpxXml = builder.buildDocument().toXmlString(pretty: true);
-    final directory = await getExternalStorageDirectory();
-    final filePath =
-        '${directory?.path}/saved_route_${DateTime.now().millisecondsSinceEpoch}.gpx';
+    final filePath = await UserWorkoutStorage.instance.newGpxFilePath('saved_route');
+    if (filePath == null) return null;
 
     final file = File(filePath);
     await file.writeAsString(gpxXml);

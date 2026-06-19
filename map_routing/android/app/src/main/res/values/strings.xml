@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Web Client ID — тот же, что в google_auth_config.dart (serverClientId) -->
+    <string name="default_web_client_id">393960878436-tnmvvvkf37a7qlj253g2eq8a8j7laoe9.apps.googleusercontent.com</string>
+</resources>

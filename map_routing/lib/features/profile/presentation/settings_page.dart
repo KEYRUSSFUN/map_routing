@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:map_routing/core/services/notification_service.dart';
 import 'package:map_routing/data/services/app_settings_service.dart';
 import 'package:map_routing/data/services/user_service.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
@@ -14,7 +16,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final _settings = AppSettingsService();
+  final _settings = AppSettingsService.instance;
   final _userService = UserService();
 
   bool _pushNotifications = true;
@@ -51,9 +53,7 @@ class _SettingsPageState extends State<SettingsPage> {
         (route) => false,
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ошибка выхода')),
-      );
+      AppSnackBar.show(context, 'Ошибка выхода');
     }
   }
 
@@ -124,12 +124,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         color: ProfileColors.body,
                       ),
                       onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Сейчас доступна только метрическая система',
-                            ),
-                          ),
+                        AppSnackBar.show(
+                          context,
+                          'Сейчас доступна только метрическая система',
                         );
                       },
                     ),
@@ -173,6 +170,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       onChanged: (value) async {
                         setState(() => _pushNotifications = value);
                         await _settings.setPushNotificationsEnabled(value);
+                        if (!value) {
+                          await NotificationService.instance.cancelAll();
+                        }
                       },
                     ),
                   ],

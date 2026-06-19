@@ -2,16 +2,21 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:map_routing/data/activity_calculator.dart';
 import 'package:map_routing/data/geometry_provider.dart';
 import 'package:map_routing/data/models/workout_activity_type.dart';
 import 'package:map_routing/data/models/workout_metadata.dart';
 import 'package:map_routing/data/models/workout_session_data.dart';
+import 'package:map_routing/data/models/achievement.dart';
+import 'package:map_routing/data/services/achievement_service.dart';
 import 'package:map_routing/data/services/gpx_workout_service.dart';
 import 'package:map_routing/data/services/registration_service.dart';
 import 'package:map_routing/data/services/route_service.dart';
+import 'package:map_routing/data/services/statistics_service.dart';
 import 'package:map_routing/data/services/user_service.dart';
+import 'package:map_routing/data/services/user_workout_storage.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
 import 'package:map_routing/features/map/presentation/map_ui_styles.dart';
 import 'package:map_routing/features/map/presentation/workout_celebration_page.dart';
@@ -101,13 +106,22 @@ class _SaveWorkoutPageState extends State<SaveWorkoutPage> {
           .where((t) => t.isNotEmpty)
           .toList();
 
-      final metadata = WorkoutMetadata(
+      String? persistedPhotoPath;
+      if (_photoPath != null) {
+        persistedPhotoPath = await UserWorkoutStorage.instance.persistWorkoutPhoto(
+          gpxPath,
+          _photoPath!,
+        );
+      }
+
+      final startedAt = widget.session.startedAt;
+      var metadata = WorkoutMetadata(
         title: _titleController.text.trim().isEmpty
-            ? defaultWorkoutTitle(_activityType, widget.session.startedAt)
+            ? defaultWorkoutTitle(_activityType, startedAt)
             : _titleController.text.trim(),
         activityType: _activityType,
         description: _descriptionController.text.trim(),
-        photoPath: _photoPath,
+        photoPath: persistedPhotoPath,
         tags: tags,
         effortLevel: _effortLevel,
         notes: _notesController.text.trim(),
@@ -117,34 +131,55 @@ class _SaveWorkoutPageState extends State<SaveWorkoutPage> {
         calories: widget.session.calories.round(),
         elevationGainM: widget.session.elevationGainM,
         avgSpeedKmh: widget.session.avgSpeedKmh,
-        startedAtIso: widget.session.startedAt.toIso8601String(),
+        startedAtIso: startedAt.toIso8601String(),
+        startedAtLocalHour: startedAt.hour,
       );
       await WorkoutMetadata.saveToFile(gpxPath, metadata);
 
-      try {
-        await RouteService().uploadRoute(
-          RouteService.trackPointsToGeoJson(points),
-        );
-      } catch (_) {}
-
-      final userInfo = await UserService().fetchUserInfo();
-      final weight = (userInfo?['weight'] as num?)?.toDouble() ?? 70.0;
-      final calculator = ActivityCalculator(weightKg: weight);
-      final steps = calculator.estimateStepsByDistance(widget.session.distanceMeters);
-      final calories = calculator.calculateWalkingCalories(
-        distanceMeters: widget.session.distanceMeters,
-        met: _activityType.met,
-      );
-
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('jwt_token');
+      final routeService = RouteService();
+
       if (token != null) {
+        final routeId = await routeService.uploadWorkout(
+          geoJsonPath: RouteService.trackPointsToGeoJson(points),
+          metadata: metadata,
+        );
+        String? photoUrl;
+        if (persistedPhotoPath != null) {
+          photoUrl = await routeService.uploadWorkoutPhoto(
+            routeId,
+            File(persistedPhotoPath),
+          );
+          if (photoUrl == null) {
+            throw Exception('Не удалось загрузить фото тренировки');
+          }
+        }
+        metadata = metadata.copyWith(
+          backendRouteId: routeId,
+          photoUrl: photoUrl,
+        );
+        await WorkoutMetadata.saveToFile(gpxPath, metadata);
+
+        final userInfo = await UserService().fetchUserInfo();
+        final weight = (userInfo?['weight'] as num?)?.toDouble() ?? 70.0;
+        final height = (userInfo?['height'] as num?)?.toDouble();
+        final calculator = ActivityCalculator(
+          weightKg: weight,
+          heightCm: height,
+        );
+        final steps = calculator.estimateStepsByDistance(
+          widget.session.distanceMeters,
+        );
+
         await RegistrationService().saveTrackingData(
           distance: widget.session.distanceMeters,
           steps: steps,
-          calories: calories,
+          calories: widget.session.calories,
           token: token,
+          activityDate: startedAt,
         );
+        StatisticsService.clearGlobalCache();
       }
 
       final summary = GpxWorkoutService().buildFromSession(
@@ -153,13 +188,25 @@ class _SaveWorkoutPageState extends State<SaveWorkoutPage> {
         gpxPath: gpxPath,
       );
 
+      var newAchievements = const <AchievementStatus>[];
+      if (token != null) {
+        try {
+          final achievementResult = await AchievementService().sync();
+          newAchievements = achievementResult.newlyUnlocked;
+        } catch (_) {}
+      }
+
       widget.onWorkoutSaved?.call();
 
       if (!mounted) return;
       final navigator = Navigator.of(context);
       navigator.pop();
       await navigator.push(
-        MaterialPageRoute(builder: (_) => const WorkoutCelebrationPage()),
+        MaterialPageRoute(
+          builder: (_) => WorkoutCelebrationPage(
+            newAchievements: newAchievements,
+          ),
+        ),
       );
       if (!navigator.mounted) return;
       await navigator.push(
@@ -169,9 +216,7 @@ class _SaveWorkoutPageState extends State<SaveWorkoutPage> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка сохранения: $e')),
-        );
+        AppSnackBar.show(context, 'Ошибка сохранения: $e');
       }
     } finally {
       if (mounted) setState(() => _saving = false);

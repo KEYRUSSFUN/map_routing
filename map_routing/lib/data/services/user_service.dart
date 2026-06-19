@@ -1,12 +1,35 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:map_routing/core/network/config.dart';
+import 'package:map_routing/data/services/chat_session_cache.dart';
+import 'package:map_routing/data/services/socket_chat_service.dart';
+import 'package:map_routing/data/services/statistics_service.dart';
+import 'package:map_routing/data/services/user_profile_cache.dart';
+import 'package:map_routing/data/services/user_workout_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class UserService {
-  Future<Map<String, dynamic>?> fetchUserInfo() async {
+  static Map<String, dynamic>? _cachedSelfInfo;
+  static DateTime? _cachedSelfInfoAt;
+  static const _selfInfoTtl = Duration(minutes: 5);
+
+  static void invalidateSelfInfoCache() {
+    _cachedSelfInfo = null;
+    _cachedSelfInfoAt = null;
+  }
+
+  Future<Map<String, dynamic>?> fetchUserInfo({bool force = false}) async {
+    final now = DateTime.now();
+    if (!force &&
+        _cachedSelfInfo != null &&
+        _cachedSelfInfoAt != null &&
+        now.difference(_cachedSelfInfoAt!) < _selfInfoTtl) {
+      return _cachedSelfInfo;
+    }
+
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('jwt_token');
 
@@ -14,16 +37,27 @@ class UserService {
 
     final response = await http.get(
       Uri.parse('$backendBaseUrl/api/user_info'),
-      headers: {'Authorization': '$token', 'Content-Type': 'application/json'},
+      headers: {'Authorization': token, 'Content-Type': 'application/json'},
     );
 
     if (response.statusCode == 200) {
-      return json.decode(response.body);
+      final decoded = json.decode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        _cachedSelfInfo = decoded;
+        _cachedSelfInfoAt = now;
+        return decoded;
+      }
+      if (decoded is Map) {
+        final map = Map<String, dynamic>.from(decoded);
+        _cachedSelfInfo = map;
+        _cachedSelfInfoAt = now;
+        return map;
+      }
     } else {
-      print(
+      debugPrint(
           'Error fetching user info: ${response.statusCode} - ${response.body}');
-      return null;
     }
+    return null;
   }
 
   Future<Map<String, dynamic>?> fetchOtherUserInfo({String? userId}) async {
@@ -38,13 +72,13 @@ class UserService {
 
     final response = await http.get(
       url,
-      headers: {'Authorization': '$token', 'Content-Type': 'application/json'},
+      headers: {'Authorization': token, 'Content-Type': 'application/json'},
     );
 
     if (response.statusCode == 200) {
       return json.decode(response.body);
     } else {
-      print(
+      debugPrint(
           'Error fetching other user info: ${response.statusCode} - ${response.body}');
       return null;
     }
@@ -73,7 +107,7 @@ class UserService {
       return data['avatar_url'] as String?;
     }
 
-    print(
+    debugPrint(
       'Error uploading avatar: ${streamedResponse.statusCode} - $body',
     );
     return null;
@@ -89,16 +123,17 @@ class UserService {
     final response = await http.post(
       Uri.parse('$backendBaseUrl/api/user_info'),
       headers: {
-        'Authorization': '$token',
+        'Authorization': token,
         'Content-Type': 'application/json',
       },
       body: jsonEncode(data),
     );
 
     if (response.statusCode == 200) {
+      invalidateSelfInfoCache();
       return json.decode(response.body);
     } else {
-      print(
+      debugPrint(
           'Error updating user info: ${response.statusCode} - ${response.body}');
       return null;
     }
@@ -112,14 +147,20 @@ class UserService {
 
     final response = await http.post(
       Uri.parse('$backendBaseUrl/api/logout'),
-      headers: {'Authorization': '$token'},
+      headers: {'Authorization': token},
     );
 
     if (response.statusCode == 200) {
       await prefs.remove('jwt_token');
+      await UserWorkoutStorage.instance.clearCurrentUserId();
+      StatisticsService.clearGlobalCache();
+      invalidateSelfInfoCache();
+      UserProfileCache.instance.clear();
+      ChatSessionCache.instance.clear();
+      SocketChatService.instance.disconnect();
       return json.decode(response.body);
     } else {
-      print('Error logging out: ${response.statusCode} - ${response.body}');
+      debugPrint('Error logging out: ${response.statusCode} - ${response.body}');
       return null;
     }
   }

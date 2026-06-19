@@ -12,6 +12,8 @@ class ChatRouteShare(db.Model):
     stored_filename = db.Column(db.String(255), nullable=False, unique=True)
     title = db.Column(db.String(255), nullable=True)
     file_size = db.Column(db.Integer, nullable=False, default=0)
+    snapshot_json = db.Column(db.Text, nullable=True)
+    photo_filename = db.Column(db.String(255), nullable=True)
     created_at = db.Column(
         db.DateTime,
         default=lambda: datetime.now(timezone.utc),

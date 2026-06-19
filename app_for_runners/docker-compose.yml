@@ -14,6 +14,53 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/app_for_runners
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
+    env_file:
+      - .env
+    volumes:
+      - uploads_data:/app/static/uploads
+      # Актуальный код и миграции с хоста — без пересборки образа
+      - ./migrations:/app/migrations:ro
+      - ./routes:/app/routes:ro
+      - ./utils:/app/utils:ro
+      - ./models:/app/models:ro
+      - ./services:/app/services:ro
+      - ./app:/app/app:ro
+      - ./config.py:/app/config.py:ro
+      - ./extensions.py:/app/extensions.py:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+  redis_data:
+  uploads_data:

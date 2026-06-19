@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:map_routing/core/network/backend_urls.dart';
 import 'package:map_routing/data/models/friend.dart';
 import 'package:map_routing/core/network/config.dart';
 
@@ -21,8 +22,8 @@ class FriendService {
       return data
           .map((json) => Friend(
                 id: json['id'].toString(),
-                avatarUrl: json['avatar_url']?.toString(),
-                isOnline: false,
+                avatarUrl: absoluteBackendUrl(json['avatar_url']?.toString()),
+                isOnline: json['is_online'] == true,
                 name: json['name']?.toString() ?? 'Пользователь',
               ))
           .toList();

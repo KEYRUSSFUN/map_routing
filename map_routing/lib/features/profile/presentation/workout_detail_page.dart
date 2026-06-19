@@ -3,16 +3,53 @@ import 'dart:io';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:map_routing/data/models/track_point.dart';
 import 'package:map_routing/data/models/workout_activity_type.dart';
 import 'package:map_routing/data/models/workout_summary.dart';
 import 'package:map_routing/data/services/gpx_workout_service.dart';
+import 'package:map_routing/features/chat/widgets/share_route_to_chats_dialog.dart';
+import 'package:map_routing/features/profile/presentation/edit_workout_page.dart';
 import 'package:map_routing/features/profile/presentation/profile_ui.dart';
+import 'package:map_routing/features/profile/widgets/workout_route_map_preview.dart';
 
-class WorkoutDetailPage extends StatelessWidget {
-  const WorkoutDetailPage({super.key, required this.workout});
+class WorkoutDetailPage extends StatefulWidget {
+  const WorkoutDetailPage({
+    super.key,
+    required this.workout,
+    this.onShowOnMap,
+    this.onWorkoutUpdated,
+  });
 
   final WorkoutSummary workout;
+  final ValueChanged<WorkoutSummary>? onShowOnMap;
+  final VoidCallback? onWorkoutUpdated;
+
+  @override
+  State<WorkoutDetailPage> createState() => _WorkoutDetailPageState();
+}
+
+class _WorkoutDetailPageState extends State<WorkoutDetailPage> {
+  late WorkoutSummary _workout;
+
+  @override
+  void initState() {
+    super.initState();
+    _workout = widget.workout;
+  }
+
+  Future<void> _openEdit() async {
+    final updated = await Navigator.push<WorkoutSummary>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditWorkoutPage(workout: _workout),
+      ),
+    );
+    if (!mounted || updated == null) return;
+    setState(() => _workout = updated);
+    widget.onWorkoutUpdated?.call();
+    AppSnackBar.show(context, 'Изменения сохранены');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,18 +66,20 @@ class WorkoutDetailPage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _RoutePreviewCard(
-                      points: workout.points,
-                      activityType: workout.activityType,
+                      points: _workout.points,
+                      filePath: _workout.filePath,
+                      activityType: _workout.activityType,
                     ),
                     const SizedBox(height: 16),
-                    _MetricsGrid(workout: workout),
+                    _MetricsGrid(workout: _workout),
                     const SizedBox(height: 16),
-                    _PerformanceCard(workout: workout),
+                    _PerformanceCard(workout: _workout),
                     const SizedBox(height: 16),
-                    _SecondaryMetricsRow(workout: workout),
-                    if (_hasWorkoutDetails(workout)) ...[
+                    _SecondaryMetricsRow(workout: _workout),
+                    if (_workout.activityType != null ||
+                        _hasWorkoutDetails(_workout)) ...[
                       const SizedBox(height: 16),
-                      _WorkoutDetailsCard(workout: workout),
+                      _WorkoutDetailsCard(workout: _workout),
                     ],
                     const SizedBox(height: 20),
                     _buildActions(context),
@@ -65,7 +104,7 @@ class WorkoutDetailPage extends StatelessWidget {
           ),
           Expanded(
             child: Text(
-              workout.title,
+              _workout.title,
               textAlign: TextAlign.center,
               style: GoogleFonts.lexendDeca(
                 fontSize: 18,
@@ -75,11 +114,7 @@ class WorkoutDetailPage extends StatelessWidget {
             ),
           ),
           IconButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Редактирование скоро будет доступно')),
-              );
-            },
+            onPressed: _openEdit,
             icon: const Icon(Icons.edit_outlined),
           ),
         ],
@@ -93,48 +128,61 @@ class WorkoutDetailPage extends StatelessWidget {
       fontSize: 14,
       fontWeight: FontWeight.w600,
     );
+    final canShowOnMap = widget.onShowOnMap != null &&
+        (_workout.filePath.isNotEmpty || _workout.points.length >= 2);
+    final canShare =
+        _workout.filePath.isNotEmpty || _workout.points.length >= 2;
 
     return Row(
       children: [
-        Expanded(
-          child: SizedBox(
-            height: height,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Поделиться: скоро')),
-                );
-              },
-              icon: const Icon(Icons.share_outlined, size: 20, color: Colors.black87),
-              label: Text('Поделиться', style: labelStyle.copyWith(color: Colors.black87)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: ProfileColors.primaryGreen,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+        if (canShowOnMap) ...[
+          Expanded(
+            child: SizedBox(
+              height: height,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  widget.onShowOnMap!(_workout);
+                },
+                icon: const Icon(Icons.map_outlined, size: 20, color: Colors.white),
+                label: Text('На карте', style: labelStyle.copyWith(color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: ProfileColors.primaryGreen,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 12),
+          const SizedBox(width: 12),
+        ],
         Expanded(
           child: SizedBox(
             height: height,
-            child: OutlinedButton.icon(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Маршрут сохранён: ${workout.title}')),
-                );
-              },
-              icon: const Icon(Icons.bookmark_border, size: 20),
-              label: Text('Сохранить маршрут', style: labelStyle),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: ProfileColors.title,
-                backgroundColor: Colors.white,
+            child: ElevatedButton.icon(
+              onPressed: canShare
+                  ? () => ShareRouteToChatsDialog.show(
+                        context,
+                        workout: _workout,
+                      )
+                  : () {
+                      AppSnackBar.show(context, 'Нет данных маршрута для отправки');
+                    },
+              icon: const Icon(Icons.share_outlined, size: 20, color: Colors.black87),
+              label: Text('Поделиться', style: labelStyle.copyWith(color: Colors.black87)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: canShowOnMap
+                    ? Colors.white
+                    : ProfileColors.primaryGreen,
+                foregroundColor: Colors.black87,
+                elevation: 0,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                side: const BorderSide(color: Color(0xFFE0E0E0), width: 1),
+                side: canShowOnMap
+                    ? const BorderSide(color: Color(0xFFE0E0E0))
+                    : null,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -150,10 +198,12 @@ class WorkoutDetailPage extends StatelessWidget {
 class _RoutePreviewCard extends StatelessWidget {
   const _RoutePreviewCard({
     required this.points,
+    this.filePath,
     this.activityType,
   });
 
   final List<TrackPoint> points;
+  final String? filePath;
   final WorkoutActivityType? activityType;
 
   @override
@@ -161,24 +211,9 @@ class _RoutePreviewCard extends StatelessWidget {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Container(
-          height: 180,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFDCEFE2), Color(0xFFF4F8F5)],
-            ),
-            border: Border.all(color: const Color(0xFFE6E6E6)),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: CustomPaint(
-              painter: _RoutePainter(points),
-              child: const SizedBox.expand(),
-            ),
-          ),
+        WorkoutRouteMapPreview(
+          points: points,
+          filePath: filePath,
         ),
         Positioned(
           left: 0,
@@ -224,50 +259,6 @@ class _RoutePreviewCard extends StatelessWidget {
       ],
     );
   }
-}
-
-class _RoutePainter extends CustomPainter {
-  _RoutePainter(this.points);
-
-  final List points;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (points.length < 2) return;
-
-    final lats = points.map((p) => p.latitude).toList();
-    final lons = points.map((p) => p.longitude).toList();
-    final minLat = lats.reduce((a, b) => a < b ? a : b);
-    final maxLat = lats.reduce((a, b) => a > b ? a : b);
-    final minLon = lons.reduce((a, b) => a < b ? a : b);
-    final maxLon = lons.reduce((a, b) => a > b ? a : b);
-
-    final latRange = (maxLat - minLat).abs() < 1e-6 ? 1e-6 : maxLat - minLat;
-    final lonRange = (maxLon - minLon).abs() < 1e-6 ? 1e-6 : maxLon - minLon;
-
-    final path = Path();
-    for (var i = 0; i < points.length; i++) {
-      final x = ((points[i].longitude - minLon) / lonRange) * (size.width - 40) + 20;
-      final y = (1 - (points[i].latitude - minLat) / latRange) * (size.height - 40) + 20;
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-
-    final paint = Paint()
-      ..color = ProfileColors.primaryGreen
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _MetricsGrid extends StatelessWidget {
@@ -403,9 +394,9 @@ class _PerformanceCard extends StatelessWidget {
             children: [
               Text('Показатели', style: profileSectionTitleStyle()),
               const Spacer(),
-              _LegendDot(color: ProfileColors.primaryGreen, label: 'Темп'),
+              const _LegendDot(color: ProfileColors.primaryGreen, label: 'Темп'),
               const SizedBox(width: 10),
-              _LegendDot(color: ProfileColors.orange, label: 'Высота'),
+              const _LegendDot(color: ProfileColors.orange, label: 'Высота'),
             ],
           ),
           const SizedBox(height: 16),
@@ -545,7 +536,9 @@ class _SecondaryMetricsRow extends StatelessWidget {
           Container(width: 1, height: 36, color: const Color(0xFFE8E8E8)),
           Expanded(
             child: _SecondaryMetric(
-              value: workout.avgHeartRate?.toString() ?? '—',
+              value: workout.avgHeartRate != null
+                  ? '${workout.avgHeartRate}'
+                  : '—',
               label: 'Средний пульс',
               valueColor: ProfileColors.orange,
             ),
@@ -599,7 +592,39 @@ bool _hasWorkoutDetails(WorkoutSummary workout) {
       (workout.notes?.isNotEmpty ?? false) ||
       workout.effortLevel != null ||
       workout.privacy != null ||
-      (workout.photoPath?.isNotEmpty ?? false);
+      (workout.photoPath?.isNotEmpty ?? false) ||
+      (workout.photoUrl?.isNotEmpty ?? false);
+}
+
+Widget? _workoutPhotoWidget(WorkoutSummary workout) {
+  final localPath = workout.photoPath;
+  if (localPath != null && File(localPath).existsSync()) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.file(
+        File(localPath),
+        height: 180,
+        width: double.infinity,
+        fit: BoxFit.cover,
+      ),
+    );
+  }
+
+  final url = workout.photoUrl;
+  if (url != null && url.isNotEmpty) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.network(
+        url,
+        height: 180,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+      ),
+    );
+  }
+
+  return null;
 }
 
 class _WorkoutDetailsCard extends StatelessWidget {
@@ -609,6 +634,8 @@ class _WorkoutDetailsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final photo = _workoutPhotoWidget(workout);
+
     return ProfileCard(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -680,18 +707,9 @@ class _WorkoutDetailsCard extends StatelessWidget {
               value: workout.notes!,
             ),
           ],
-          if (workout.photoPath != null &&
-              File(workout.photoPath!).existsSync()) ...[
+          if (photo != null) ...[
             const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.file(
-                File(workout.photoPath!),
-                height: 180,
-                width: double.infinity,
-                fit: BoxFit.cover,
-              ),
-            ),
+            photo,
           ],
         ],
       ),

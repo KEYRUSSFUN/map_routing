@@ -6,6 +6,10 @@ from .chat_route_share import ChatRouteShare
 from .message_reaction import MessageReaction
 from .statistics import UserStatistic
 from .route import Route
+from .user_achievement import UserAchievement
+from .challenge import Challenge, ChallengeParticipant
+from .story import Story, StoryView
+from .moment import Moment, MomentLike, MomentComment
 
 __all__ = [
     'User',
@@ -17,5 +21,13 @@ __all__ = [
     'ChatRouteShare',
     'MessageReaction',
     'UserStatistic',
-    'Route'
+    'Route',
+    'UserAchievement',
+    'Challenge',
+    'ChallengeParticipant',
+    'Story',
+    'StoryView',
+    'Moment',
+    'MomentLike',
+    'MomentComment',
 ]

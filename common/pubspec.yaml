@@ -12,6 +12,7 @@ dependencies:
   flutter:
     sdk: flutter
 
+  google_fonts: ^6.2.1
   yandex_maps_mapkit: ^4.16.0-beta
 
 dev_dependencies:

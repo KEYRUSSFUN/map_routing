@@ -19,6 +19,20 @@ class RouteProgressSnapshot {
   final double offRouteDistanceM;
 }
 
+class PathSnapResult {
+  const PathSnapResult({
+    required this.point,
+    required this.projectedMeters,
+    required this.distanceToPathM,
+    required this.isOffRoute,
+  });
+
+  final Point point;
+  final double projectedMeters;
+  final double distanceToPathM;
+  final bool isOffRoute;
+}
+
 class RouteProgressTracker {
   RouteProgressTracker(List<Point> routePoints) : pathPoints = _densify(routePoints) {
     _cumulativeMeters = _buildCumulative(pathPoints);
@@ -32,12 +46,23 @@ class RouteProgressTracker {
   double _completedMeters = 0;
   bool _isOffRoute = false;
   double _offRouteDistanceM = 0;
+  PathSnapResult? _lastPathSnap;
+
+  PathSnapResult? get lastPathSnap => _lastPathSnap;
+  double get completedMeters => _completedMeters;
 
   RouteProgressSnapshot update(
     double latitude,
     double longitude, {
     double offRouteThresholdM = 35,
   }) {
+    final snap = snapToPath(
+      latitude,
+      longitude,
+      offRouteThresholdM: offRouteThresholdM,
+    );
+    _lastPathSnap = snap;
+
     if (pathPoints.length < 2 || totalMeters <= 0) {
       return RouteProgressSnapshot(
         totalMeters: totalMeters,
@@ -49,8 +74,44 @@ class RouteProgressTracker {
       );
     }
 
+    _isOffRoute = snap.isOffRoute;
+    _offRouteDistanceM = snap.distanceToPathM;
+
+    if (snap.projectedMeters > _completedMeters - 10) {
+      _completedMeters = snap.projectedMeters.clamp(0.0, totalMeters);
+    }
+
+    final remaining = (totalMeters - _completedMeters).clamp(0.0, totalMeters);
+
+    return RouteProgressSnapshot(
+      totalMeters: totalMeters,
+      completedMeters: _completedMeters,
+      remainingMeters: remaining,
+      progress:
+          totalMeters > 0 ? (_completedMeters / totalMeters).clamp(0.0, 1.0) : 0,
+      isOffRoute: _isOffRoute,
+      offRouteDistanceM: _offRouteDistanceM,
+    );
+  }
+
+  PathSnapResult snapToPath(
+    double latitude,
+    double longitude, {
+    double offRouteThresholdM = 35,
+  }) {
+    if (pathPoints.length < 2 || totalMeters <= 0) {
+      return PathSnapResult(
+        point: Point(latitude: latitude, longitude: longitude),
+        projectedMeters: 0,
+        distanceToPathM: 0,
+        isOffRoute: false,
+      );
+    }
+
     var nearestDistanceM = double.infinity;
     var projectedMeters = _completedMeters;
+    var projectedLat = latitude;
+    var projectedLng = longitude;
 
     for (var i = 0; i < pathPoints.length - 1; i++) {
       final start = pathPoints[i];
@@ -65,6 +126,8 @@ class RouteProgressTracker {
 
       if (distanceToPath < nearestDistanceM) {
         nearestDistanceM = distanceToPath;
+        projectedLat = projection.latitude;
+        projectedLng = projection.longitude;
         final segmentLength = Geolocator.distanceBetween(
           start.latitude,
           start.longitude,
@@ -76,22 +139,11 @@ class RouteProgressTracker {
       }
     }
 
-    _isOffRoute = nearestDistanceM > offRouteThresholdM;
-    _offRouteDistanceM = nearestDistanceM;
-
-    if (projectedMeters > _completedMeters - 10) {
-      _completedMeters = projectedMeters.clamp(0, totalMeters);
-    }
-
-    final remaining = (totalMeters - _completedMeters).clamp(0, totalMeters);
-
-    return RouteProgressSnapshot(
-      totalMeters: totalMeters,
-      completedMeters: _completedMeters,
-      remainingMeters: remaining,
-      progress: totalMeters > 0 ? (_completedMeters / totalMeters).clamp(0, 1) : 0,
-      isOffRoute: _isOffRoute,
-      offRouteDistanceM: _offRouteDistanceM,
+    return PathSnapResult(
+      point: Point(latitude: projectedLat, longitude: projectedLng),
+      projectedMeters: projectedMeters,
+      distanceToPathM: nearestDistanceM,
+      isOffRoute: nearestDistanceM > offRouteThresholdM,
     );
   }
 

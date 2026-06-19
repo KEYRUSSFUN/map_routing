@@ -1,3 +1,5 @@
+from sqlalchemy.orm import joinedload
+
 from extensions import db
 from models import MessageReaction, User
 
@@ -12,17 +14,39 @@ def _member_name(user):
     return 'User'
 
 
+def _serialize_reaction_row(reaction):
+    user = reaction.user
+    return {
+        'user_id': reaction.user_id,
+        'user_name': _member_name(user),
+        'emoji': reaction.emoji,
+    }
+
+
 def reactions_for_message_id(message_id):
-    reactions = MessageReaction.query.filter_by(message_id=message_id).all()
-    result = []
+    reactions = (
+        MessageReaction.query.filter_by(message_id=message_id)
+        .options(joinedload(MessageReaction.user).joinedload(User.user_info))
+        .all()
+    )
+    return [_serialize_reaction_row(reaction) for reaction in reactions]
+
+
+def reactions_map_for_message_ids(message_ids):
+    if not message_ids:
+        return {}
+
+    reactions = (
+        MessageReaction.query.filter(MessageReaction.message_id.in_(message_ids))
+        .options(joinedload(MessageReaction.user).joinedload(User.user_info))
+        .all()
+    )
+    by_message = {}
     for reaction in reactions:
-        user = reaction.user or User.query.get(reaction.user_id)
-        result.append({
-            'user_id': reaction.user_id,
-            'user_name': _member_name(user),
-            'emoji': reaction.emoji,
-        })
-    return result
+        by_message.setdefault(reaction.message_id, []).append(
+            _serialize_reaction_row(reaction),
+        )
+    return by_message
 
 
 def serialize_message_reactions(message):

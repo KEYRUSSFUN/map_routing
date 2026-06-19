@@ -1,7 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:map_routing/core/network/config.dart';
+import 'package:map_routing/core/network/network_errors.dart';
+import 'package:map_routing/data/services/statistics_service.dart';
+import 'package:map_routing/data/services/socket_chat_service.dart';
+import 'package:map_routing/data/services/user_workout_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class RegistrationService {
@@ -9,7 +15,7 @@ class RegistrationService {
 
   RegistrationService({String? baseUrl}) : baseUrl = baseUrl ?? backendBaseUrl;
 
-  Future<bool> registerUser(String email, String password) async {
+  Future<String?> registerUser(String email, String password) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/register'),
@@ -17,62 +23,88 @@ class RegistrationService {
           'Content-Type': 'application/json; charset=UTF-8',
         },
         body: jsonEncode(<String, String>{
-          'email': email,
+          'email': email.trim(),
           'password': password,
         }),
       );
 
-      if (response.statusCode == 201) {
-        final responseData = jsonDecode(response.body);
-        return responseData['success'] as bool;
-      } else {
-        print('Ошибка регистрации: ${response.statusCode}, ${response.body}');
-        return false;
+      final responseData = jsonDecode(response.body);
+      if (responseData is Map<String, dynamic>) {
+        final message = responseData['message']?.toString();
+        if (response.statusCode == 201 && responseData['success'] == true) {
+          return null;
+        }
+        if (message != null && message.isNotEmpty) {
+          return message;
+        }
       }
+
+      debugPrint('Ошибка регистрации: ${response.statusCode}, ${response.body}');
+      return 'Ошибка регистрации. Попробуйте снова.';
     } catch (e) {
-      print('Ошибка соединения: $e');
-      return false;
+      debugPrint('Ошибка соединения: $e');
+      return userFacingNetworkError(e) ?? 'Ошибка соединения. Попробуйте снова.';
     }
   }
 
-  Future<String?> loginUser(String email, String password) async {
+  Future<({String? token, String? error})> loginUser(
+    String email,
+    String password,
+  ) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/login'),
         headers: const {'Content-Type': 'application/json; charset=UTF-8'},
         body: jsonEncode({'email': email, 'password': password}),
-      );
+      ).timeout(const Duration(seconds: 20));
 
       if (response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
-        final token = responseData['token'];
-        if (token != null) {
-          await _saveToken(token);
-          return token;
+        if (responseData is Map<String, dynamic>) {
+          final token = responseData['token']?.toString();
+          if (token != null && token.isNotEmpty) {
+            await _saveToken(token);
+            return (token: token, error: null);
+          }
+
+          final message = responseData['message']?.toString();
+          if (message != null && message.isNotEmpty) {
+            return (token: null, error: message);
+          }
         }
       }
-      return null;
+
+      return (token: null, error: 'Ошибка входа. Неверный email или пароль');
     } catch (e) {
-      print('Login error: $e');
-      return null;
+      debugPrint('Login error: $e');
+      return (
+        token: null,
+        error: userFacingNetworkError(e) ?? 'Ошибка соединения. Попробуйте снова.',
+      );
     }
   }
 
   Future<void> _saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('jwt_token', token);
+    await UserWorkoutStorage.instance.syncUserIdFromToken(token);
+    StatisticsService.clearGlobalCache();
+    unawaited(SocketChatService.instance.reconnectForAccountSwitch());
   }
+
+  Future<void> saveToken(String token) => _saveToken(token);
 
   Future<void> saveTrackingData({
     required double distance,
     required int steps,
     required double calories,
     required String token,
+    DateTime? activityDate,
   }) async {
     final url = Uri.parse('$baseUrl/api/user_statistic');
-    final now = DateTime.now();
+    final date = activityDate ?? DateTime.now();
     final formattedDate =
-        "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+        "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
 
     final response = await http.post(
       url,
@@ -89,9 +121,11 @@ class RegistrationService {
     );
 
     if (response.statusCode == 201) {
-      print("Статистика успешно отправлена");
-    } else {
-      print("Ошибка: ${response.statusCode} ${response.body}");
+      debugPrint('Статистика успешно отправлена');
+      return;
     }
+    throw Exception(
+      'Не удалось сохранить статистику: ${response.statusCode} ${response.body}',
+    );
   }
 }

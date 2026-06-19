@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:map_routing/core/navigation/open_user_profile.dart';
+import 'package:map_routing/core/network/backend_urls.dart';
+import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:map_routing/core/widgets/user_avatar.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
@@ -6,6 +9,7 @@ import 'package:map_routing/features/auth/presentation/auth_ui.dart';
 class UserSearchResult extends StatefulWidget {
   final String userId;
   final String name;
+  final String? avatarUrl;
   final String relationshipStatus;
   final Future<void> Function(String userId) onAddFriend;
 
@@ -13,6 +17,7 @@ class UserSearchResult extends StatefulWidget {
     super.key,
     required this.userId,
     required this.name,
+    this.avatarUrl,
     this.relationshipStatus = 'none',
     required this.onAddFriend,
   });
@@ -54,15 +59,11 @@ class _UserSearchResultState extends State<UserSearchResult> {
         _isFriendRequestSent = true;
         _isLoading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Заявка отправлена')),
-      );
+      AppSnackBar.show(context, 'Заявка отправлена');
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_mapErrorMessage(e))),
-      );
+      AppSnackBar.show(context, _mapErrorMessage(e));
     }
   }
 
@@ -93,7 +94,8 @@ class _UserSearchResultState extends State<UserSearchResult> {
           children: [
             UserAvatar(
               name: widget.name,
-              showNetworkImage: false,
+              avatarUrl: absoluteBackendUrl(widget.avatarUrl),
+              onTap: () => openUserProfile(context, widget.userId),
             ),
             const SizedBox(width: 12),
             Expanded(

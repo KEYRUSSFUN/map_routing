@@ -1,16 +1,23 @@
 import 'package:collection/collection.dart';
 import 'package:common/listeners/map_input_listener.dart';
 import 'package:common/map/flutter_map_widget.dart';
-import 'package:common/utils/snackbar.dart';
-import 'package:flutter/material.dart';
+import 'package:map_routing/core/map/mapkit_bootstrap.dart';
+import 'package:map_routing/core/widgets/app_snackbar.dart';
+import 'package:flutter/material.dart' hide Animation;
 import 'package:map_routing/data/activity_calculator.dart';
 import 'package:map_routing/data/geometry_provider.dart';
+import 'package:map_routing/data/models/address_suggestion.dart';
 import 'package:map_routing/data/models/track_point.dart';
 import 'package:map_routing/data/models/workout_activity_type.dart';
 import 'package:map_routing/data/models/workout_session_data.dart';
+import 'package:map_routing/data/models/planned_workout.dart';
+import 'package:map_routing/data/models/workout_summary.dart';
 import 'package:map_routing/data/route_progress_tracker.dart';
 import 'package:map_routing/data/routing_type.dart';
+import 'package:map_routing/data/services/app_settings_service.dart';
+import 'package:map_routing/data/services/gps_track_processor.dart';
 import 'package:map_routing/data/services/user_service.dart';
+import 'package:map_routing/data/services/yandex_address_suggest_service.dart';
 import 'package:map_routing/features/map/presentation/map_ui_styles.dart';
 import 'package:map_routing/features/map/presentation/save_workout_page.dart';
 import 'package:map_routing/features/map/presentation/widgets/map_idle_overlay.dart';
@@ -19,9 +26,8 @@ import 'package:map_routing/features/map/presentation/widgets/map_workout_overla
 import 'package:map_routing/features/map/presentation/widgets/workout_metrics_sheet.dart';
 import 'package:map_routing/shared/utils/polyline_extensions.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:yandex_maps_mapkit/directions.dart';
 import 'package:yandex_maps_mapkit/image.dart' as image_provider;
-import 'package:yandex_maps_mapkit/mapkit.dart' hide LocationSettings;
+import 'package:yandex_maps_mapkit/mapkit.dart' hide LocationSettings, Icon;
 import 'package:yandex_maps_mapkit/transport.dart';
 import 'dart:async';
 import 'package:flutter_compass/flutter_compass.dart';
@@ -63,10 +69,10 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   DateTime? _lastTrackingUiUpdate;
   static const _trackingUiInterval = Duration(milliseconds: 500);
   var _routePoints = <Point>[];
-  var _drivingRoutes = <DrivingRoute>[];
+  List<Point>? _savedRouteTrackPoints;
   var _pedestrianRoutes = <MasstransitRoute>[];
   var _publicTransportRoutes = <MasstransitRoute>[];
-  var _currentRoutingType = RoutingType.driving;
+  var _currentRoutingType = RoutingType.pedestrian;
 
   PlacemarkMapObject? _currentLocationPlacemark;
   image_provider.ImageProvider? _locationMarkerProvider;
@@ -75,8 +81,16 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   bool _isMinimized = false;
   bool _isLocked = false;
   bool _isManualPaused = false;
+  bool _isAutoPaused = false;
+  DateTime? _autoPauseCandidateSince;
+  DateTime? _autoResumeCandidateSince;
+  static const _autoPauseSpeedMs = 0.3;
+  static const _autoResumeSpeedMs = 0.5;
+  static const _autoPauseDelay = Duration(seconds: 8);
+  static const _autoResumeDelay = Duration(seconds: 3);
   StreamSubscription<Position>? _positionStream;
   final List<TrackPoint> _trackedRoutePoints = [];
+  final GpsTrackProcessor _gpsTrackProcessor = GpsTrackProcessor();
 
   double _totalDistance = 0.0;
   double _currentSpeedMs = 0.0;
@@ -84,7 +98,15 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   double _elevationGainM = 0.0;
   double? _lastElevation;
   double _userWeightKg = 70;
+  double? _userHeightCm;
+  int? _userAge;
   double _mapZoom = 16;
+  bool _hasInitialCameraFocused = false;
+
+  static const _initialCameraAnimation = Animation(
+    type: AnimationType.Smooth,
+    duration: 0.85,
+  );
 
   WorkoutActivityType _selectedActivity = WorkoutActivityType.run;
   DateTime? _workoutStartedAt;
@@ -96,23 +118,42 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       DraggableScrollableController();
 
   RouteProgressTracker? _routeProgressTracker;
+  RouteProgressTracker? _approachProgressTracker;
+  List<Point>? _approachRoutePoints;
+  bool _hasReachedWorkoutStart = true;
   bool _isGuidedWorkout = false;
   double _guidedRemainingM = 0;
   double _guidedProgress = 0;
   bool _isOffRoute = false;
+  static const _workoutStartThresholdM = 35.0;
+  static const _workoutCompleteProgress = 0.995;
+  bool _workoutAutoFinishing = false;
 
-  late final DrivingRouter _drivingRouter;
-  late final PedestrianRouter _pedestrianRouter;
-  late final MasstransitRouter _publicTransportRouter;
+  late PedestrianRouter _pedestrianRouter;
+  late MasstransitRouter _publicTransportRouter;
 
   StreamSubscription<CompassEvent>? _compassStream;
+  bool _sensorsActive = false;
+  bool _compassActive = false;
+  bool _mapSurfaceMounted = false;
+  bool _routersReady = false;
+  bool _mapRefreshScheduled = false;
+  Timer? _sensorPauseTimer;
+  Timer? _mapSurfaceTimer;
 
-  DrivingSession? _drivingSession;
   MasstransitSession? _pedestrianSession;
   MasstransitSession? _publicTransportSession;
+  MasstransitSession? _approachPedestrianSession;
+  MasstransitSession? _approachPublicTransportSession;
+
+  final _addressSuggestService = YandexAddressSuggestService();
 
   bool get isTrackingActive => _isTracking;
   bool get isWorkoutFullscreen => _isTracking && !_isMinimized;
+
+  bool get _isWorkoutPaused => _isManualPaused || _isAutoPaused;
+
+  bool get _hideMapEndpoints => AppSettingsService.instance.hideMapEndpoints;
 
   bool get _isMapReady =>
       _mapWindow != null &&
@@ -120,6 +161,22 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _routesCollection != null &&
       _placemarksCollection != null &&
       widget.isTabActive;
+
+  void _scheduleMapRefresh() {
+    if (!_isMapReady || _mapWindow == null || _mapRefreshScheduled) return;
+    _mapRefreshScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _mapRefreshScheduled = false;
+      if (!mounted || _mapWindow == null || !widget.isTabActive) return;
+      _requestMapRefresh();
+    });
+  }
+
+  void _requestMapRefresh() {
+    final mapWindow = _mapWindow;
+    if (mapWindow == null) return;
+    mapWindow.map.move(mapWindow.map.cameraPosition);
+  }
 
   late final pointImageProvider =
       image_provider.ImageProvider.fromImageProvider(
@@ -132,76 +189,145 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   late final _inputListener = MapInputListenerImpl(
     onMapTapCallback: (_, __) {},
     onMapLongTapCallback: (map, point) {
-      if (_isTracking || !_isMapReady) return;
-
-      _routePoints = [..._routePoints, point];
-      final isFirstPoint = _routePoints.length == 1;
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        if (isFirstPoint) {
-          showSnackBar(context, 'Старт маршрута. Поставьте финишную точку');
-        } else if (_routePoints.length == 2) {
-          showSnackBar(context, 'Маршрут готов. Нажмите ▶ для старта тренировки');
-        }
-        setState(() {});
-        _onRouteParametersUpdated();
-      });
-    },
-  );
-
-  late final _drivingRouteListener = DrivingSessionRouteListener(
-    onDrivingRoutes: (newRoutes) {
-      if (newRoutes.isEmpty) {
-        showSnackBar(context, 'Не возможно построить маршрут');
-      }
-      setState(() => _drivingRoutes = newRoutes);
-      _onDrivingRoutesUpdated();
-    },
-    onDrivingRoutesError: (error) {
-      showSnackBar(context, 'Ошибка построения маршрута (авто)');
+      if (_isTracking || !_isMapReady || _routePoints.length >= 2) return;
+      _addRoutePoint(point);
     },
   );
 
   late final _pedestrianRouteListener = RouteHandler(
     onMasstransitRoutes: (newRoutes) {
       if (newRoutes.isEmpty) {
-        showSnackBar(context, 'Не удалось построить маршрут');
+        AppSnackBar.show(context, 'Не удалось построить маршрут');
       }
       setState(() => _pedestrianRoutes = newRoutes);
       _onPedestrianRoutesUpdated();
     },
     onMasstransitRoutesError: (error) {
-      showSnackBar(context, 'Ошибка построения маршрута (пешком)');
+      AppSnackBar.show(context, 'Ошибка построения маршрута (пешком)');
     },
   );
 
   late final _publicTransportRouteListener = RouteHandler(
     onMasstransitRoutes: (newRoutes) {
       if (newRoutes.isEmpty) {
-        showSnackBar(context, 'Не удалось построить маршрут');
+        AppSnackBar.show(context, 'Не удалось построить маршрут');
       }
       setState(() => _publicTransportRoutes = newRoutes);
       _onPublicTransportRoutesUpdated();
     },
     onMasstransitRoutesError: (error) {
-      showSnackBar(context, 'Ошибка построения маршрута (транспорт)');
+      AppSnackBar.show(context, 'Ошибка построения маршрута (транспорт)');
     },
+  );
+
+  late final _approachPedestrianRouteListener = RouteHandler(
+    onMasstransitRoutes: (newRoutes) {
+      if (newRoutes.isEmpty || !mounted) return;
+      _onApproachRouteResolved(newRoutes.first.geometry.points);
+    },
+    onMasstransitRoutesError: (_) {},
+  );
+
+  late final _approachPublicTransportRouteListener = RouteHandler(
+    onMasstransitRoutes: (newRoutes) {
+      if (newRoutes.isEmpty || !mounted) return;
+      _onApproachRouteResolved(newRoutes.first.geometry.points);
+    },
+    onMasstransitRoutesError: (_) {},
   );
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _drivingRouter = DirectionsFactory.instance
-        .createDrivingRouter(DrivingRouterType.Combined);
+    unawaited(AppSettingsService.instance.ensureLoaded());
+    AppSettingsService.instance.addListener(_onAppSettingsChanged);
+    unawaited(_ensureRoutersReady());
+    unawaited(_loadUserProfile());
+    _loadLocationMarkerIcon();
+    if (widget.isTabActive) {
+      _onTabBecameActive();
+    }
+  }
+
+  Future<void> _ensureRoutersReady() async {
+    if (_routersReady) return;
+    await MapkitBootstrap.ensureInitialized();
+    if (!mounted) return;
+    await _addressSuggestService.ensureInitialized();
+    if (!mounted) return;
     _pedestrianRouter = TransportFactory.instance.createPedestrianRouter();
     _publicTransportRouter =
         TransportFactory.instance.createMasstransitRouter();
-    _loadUserWeight();
-    _loadLocationMarkerIcon();
+    _routersReady = true;
+  }
+
+  bool get _needsSensors => widget.isTabActive || _isTracking;
+
+  void _onTabBecameActive() {
+    _scheduleMapSurface();
+    _scheduleSensorStart();
+  }
+
+  void _onTabBecameInactive() {
+    _scheduleSensorPause();
+  }
+
+  void _scheduleMapSurface() {
+    if (_mapSurfaceMounted || !widget.isTabActive) return;
+    _mapSurfaceTimer?.cancel();
+    _mapSurfaceTimer = Timer(const Duration(milliseconds: 120), () {
+      if (!mounted || !widget.isTabActive || _mapSurfaceMounted) return;
+      setState(() => _mapSurfaceMounted = true);
+    });
+  }
+
+  void _scheduleSensorStart() {
+    if (!_needsSensors || _sensorsActive) return;
+    _sensorPauseTimer?.cancel();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_needsSensors) return;
+      _ensureLocationActive();
+    });
+  }
+
+  void _scheduleSensorPause() {
+    _sensorPauseTimer?.cancel();
+    _sensorPauseTimer = Timer(const Duration(milliseconds: 450), () {
+      if (!mounted || _needsSensors) return;
+      _pauseSensors();
+    });
+  }
+
+  void _ensureLocationActive() {
+    if (_sensorsActive || !_needsSensors) return;
+    _sensorsActive = true;
     _startLocationUpdates();
+  }
+
+  void _ensureCompassActive() {
+    if (_compassActive || !_needsSensors || !_isMapReady) return;
+    _compassActive = true;
     _startCompassUpdates();
+  }
+
+  void _pauseSensors() {
+    _sensorPauseTimer?.cancel();
+    if (!_sensorsActive && !_compassActive) return;
+    _sensorsActive = false;
+    _compassActive = false;
+    _positionStream?.cancel();
+    _positionStream = null;
+    _compassStream?.cancel();
+    _compassStream = null;
+  }
+
+  void _syncSensorsState() {
+    if (_needsSensors) {
+      _scheduleSensorStart();
+    } else {
+      _scheduleSensorPause();
+    }
   }
 
   Future<void> _loadLocationMarkerIcon() async {
@@ -218,23 +344,387 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    AppSettingsService.instance.removeListener(_onAppSettingsChanged);
+    _mapSurfaceTimer?.cancel();
+    _sensorPauseTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _positionStream?.cancel();
     _compassStream?.cancel();
     _tickTimer?.cancel();
     _metricsSheetController.dispose();
-    _drivingSession?.cancel();
     _pedestrianSession?.cancel();
     _publicTransportSession?.cancel();
+    _clearApproachRoute();
+    _addressSuggestService.dispose();
     super.dispose();
   }
 
-  Future<void> _loadUserWeight() async {
-    final info = await UserService().fetchUserInfo();
-    final weight = (info?['weight'] as num?)?.toDouble();
-    if (weight != null && weight > 0 && mounted) {
-      setState(() => _userWeightKg = weight);
+  void _onAppSettingsChanged() {
+    if (!_isAutoPaused && !AppSettingsService.instance.autoPauseEnabled) {
+      _autoPauseCandidateSince = null;
+      _autoResumeCandidateSince = null;
     }
+    if (_isMapReady) {
+      _onRouteParametersUpdated();
+    }
+  }
+
+  void _evaluateAutoPause(double speedMs) {
+    if (!_isTracking || _isManualPaused) {
+      _autoPauseCandidateSince = null;
+      _autoResumeCandidateSince = null;
+      return;
+    }
+
+    if (!AppSettingsService.instance.autoPauseEnabled) {
+      if (_isAutoPaused) {
+        _exitAutoPause();
+      }
+      _autoPauseCandidateSince = null;
+      _autoResumeCandidateSince = null;
+      return;
+    }
+
+    final now = DateTime.now();
+
+    if (_isAutoPaused) {
+      if (speedMs >= _autoResumeSpeedMs) {
+        _autoResumeCandidateSince ??= now;
+        if (now.difference(_autoResumeCandidateSince!) >= _autoResumeDelay) {
+          _exitAutoPause();
+        }
+      } else {
+        _autoResumeCandidateSince = null;
+      }
+      return;
+    }
+
+    if (speedMs < _autoPauseSpeedMs) {
+      _autoPauseCandidateSince ??= now;
+      if (now.difference(_autoPauseCandidateSince!) >= _autoPauseDelay) {
+        _enterAutoPause();
+      }
+    } else {
+      _autoPauseCandidateSince = null;
+    }
+  }
+
+  void _enterAutoPause() {
+    if (!_isTracking || _isWorkoutPaused) return;
+    setState(() {
+      _isAutoPaused = true;
+      _pauseStartedAt = DateTime.now();
+      _autoPauseCandidateSince = null;
+      _autoResumeCandidateSince = null;
+    });
+  }
+
+  void _exitAutoPause() {
+    if (!_isAutoPaused) return;
+    setState(() {
+      if (_pauseStartedAt != null) {
+        _accumulatedPause += DateTime.now().difference(_pauseStartedAt!);
+      }
+      _pauseStartedAt = null;
+      _isAutoPaused = false;
+      _autoResumeCandidateSince = null;
+    });
+  }
+
+  void _clearSavedRoutePreview() {
+    _savedRouteTrackPoints = null;
+  }
+
+  void _addRoutePoint(Point point) {
+    if (_isTracking || _routePoints.length >= 2) return;
+
+    _clearSavedRoutePreview();
+    _routePoints = [..._routePoints, point];
+    final isFirstPoint = _routePoints.length == 1;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (isFirstPoint) {
+        AppSnackBar.show(
+          context,
+          'Маршрут до точки. Добавьте финиш или нажмите ▶',
+        );
+      } else if (_routePoints.length == 2) {
+        AppSnackBar.show(
+          context,
+          'Маршрут между точками готов. Нажмите ▶ для старта',
+        );
+      }
+      setState(() {});
+      _onRouteParametersUpdated();
+    });
+  }
+
+  BoundingBox _getSearchBoundingBox() {
+    if (_mapWindow != null) {
+      return VisibleRegionUtils.getBounds(_mapWindow!.map.visibleRegion);
+    }
+    return const BoundingBox(
+      Point(latitude: 53.34, longitude: 83.72),
+      Point(latitude: 53.38, longitude: 83.80),
+    );
+  }
+
+  Future<void> _onAddressSelected(AddressSuggestion suggestion) async {
+    await _applyAddressSuggestion(
+      suggestion,
+      role: _RouteAddressRole.destination,
+    );
+  }
+
+  Future<void> _onStartAddressSelected(AddressSuggestion suggestion) async {
+    await _applyAddressSuggestion(
+      suggestion,
+      role: _RouteAddressRole.start,
+    );
+  }
+
+  Future<void> _onEndAddressSelected(AddressSuggestion suggestion) async {
+    await _applyAddressSuggestion(
+      suggestion,
+      role: _RouteAddressRole.end,
+    );
+  }
+
+  Future<void> _applyAddressSuggestion(
+    AddressSuggestion suggestion, {
+    required _RouteAddressRole role,
+  }) async {
+    if (_isTracking || !_isMapReady) return;
+
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    final point = await _addressSuggestService.resolvePoint(
+      suggestion,
+      _getSearchBoundingBox(),
+      userPosition: _lastKnownPoint,
+    );
+
+    if (!mounted) return;
+    if (point == null) {
+      AppSnackBar.show(context, 'Не удалось определить координаты адреса');
+      return;
+    }
+
+    setState(() {
+      _clearSavedRoutePreview();
+      _pedestrianRoutes = [];
+      _publicTransportRoutes = [];
+
+      switch (role) {
+        case _RouteAddressRole.destination:
+          _routePoints = [point];
+        case _RouteAddressRole.start:
+          if (_routePoints.length >= 2) {
+            _routePoints = [point, _routePoints.last];
+          } else if (_routePoints.length == 1) {
+            _routePoints = [point, _routePoints.first];
+          } else {
+            _routePoints = [point];
+          }
+        case _RouteAddressRole.end:
+          if (_routePoints.isEmpty) {
+            _routePoints = [point];
+          } else if (_routePoints.length == 1) {
+            _routePoints = [_routePoints.first, point];
+          } else {
+            _routePoints = [_routePoints.first, point];
+          }
+      }
+    });
+
+    _animateCameraToPoint(point);
+    _onRouteParametersUpdated();
+
+    final message = switch (role) {
+      _RouteAddressRole.destination => 'Маршрут до адреса построен',
+      _RouteAddressRole.start => 'Точка старта установлена',
+      _RouteAddressRole.end => _routePoints.length >= 2
+          ? 'Маршрут между точками готов'
+          : 'Точка назначения установлена',
+    };
+    AppSnackBar.show(context, message);
+  }
+
+  void _animateCameraToPoint(Point point, {double? zoom}) {
+    if (_mapWindow == null) return;
+    _mapWindow!.map.move(
+      CameraPosition(point, zoom: zoom ?? _mapZoom, azimuth: 0, tilt: 0),
+      animation: _initialCameraAnimation,
+    );
+  }
+
+  Future<void> loadSavedRoute(WorkoutSummary workout) async {
+    if (_isTracking) {
+      AppSnackBar.show(context, 'Завершите тренировку перед загрузкой маршрута');
+      return;
+    }
+
+    var trackPoints = <Point>[];
+    if (workout.filePath.isNotEmpty) {
+      trackPoints =
+          await GeometryProvider.loadAndParseGPX(workout.filePath);
+    }
+    if (trackPoints.length < 2 && workout.points.length >= 2) {
+      trackPoints = workout.points
+          .map((p) => Point(latitude: p.latitude, longitude: p.longitude))
+          .toList();
+    }
+
+    if (!mounted) return;
+    if (trackPoints.length < 2) {
+      AppSnackBar.show(context, 'Не удалось загрузить маршрут');
+      return;
+    }
+
+    _pedestrianSession?.cancel();
+    _publicTransportSession?.cancel();
+    _pedestrianSession = null;
+    _publicTransportSession = null;
+
+    setState(() {
+      _savedRouteTrackPoints = trackPoints;
+      _routePoints = [trackPoints.first, trackPoints.last];
+      _pedestrianRoutes = [];
+      _publicTransportRoutes = [];
+    });
+    _clearApproachRoute();
+
+    _onRouteParametersUpdated();
+    _fitCameraToTrack(trackPoints);
+    AppSnackBar.show(context, 'Маршрут «${workout.title}» на карте');
+  }
+
+  Future<void> loadPlannedWorkout(PlannedWorkout workout) async {
+    if (_isTracking) {
+      AppSnackBar.show(
+        context,
+        'Завершите тренировку перед загрузкой маршрута',
+      );
+      return;
+    }
+
+    final trackPoints = workout.displayRoutePoints;
+    if (trackPoints.length < 2) {
+      AppSnackBar.show(context, 'Не удалось загрузить маршрут');
+      return;
+    }
+
+    _pedestrianSession?.cancel();
+    _publicTransportSession?.cancel();
+    _pedestrianSession = null;
+    _publicTransportSession = null;
+
+    setState(() {
+      _savedRouteTrackPoints = trackPoints;
+      _routePoints = [workout.startPoint, workout.endPoint];
+      _selectedActivity = workout.activityType;
+      _pedestrianRoutes = [];
+      _publicTransportRoutes = [];
+    });
+    _clearApproachRoute();
+
+    _onRouteParametersUpdated();
+    _fitCameraToTrack(trackPoints);
+    AppSnackBar.show(
+      context,
+      'Запланированная тренировка «${workout.title}» на карте',
+    );
+  }
+
+  void _fitCameraToTrack(List<Point> points) {
+    if (_mapWindow == null || points.isEmpty) return;
+
+    var minLat = points.first.latitude;
+    var maxLat = points.first.latitude;
+    var minLon = points.first.longitude;
+    var maxLon = points.first.longitude;
+
+    for (final point in points) {
+      minLat = math.min(minLat, point.latitude);
+      maxLat = math.max(maxLat, point.latitude);
+      minLon = math.min(minLon, point.longitude);
+      maxLon = math.max(maxLon, point.longitude);
+    }
+
+    final center = Point(
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLon + maxLon) / 2,
+    );
+    final span = math.max(maxLat - minLat, maxLon - minLon);
+    final zoom = span <= 0.001
+        ? _mapZoom
+        : (math.log(360 / span) / math.ln2).clamp(10.0, 17.0).toDouble();
+
+    _mapZoom = zoom;
+    _animateCameraToPoint(center, zoom: zoom);
+  }
+
+  void _tryInitialCameraFocus() {
+    if (_hasInitialCameraFocused ||
+        widget.gpxPath != null ||
+        _isTracking ||
+        _lastKnownPoint == null ||
+        !_isMapReady) {
+      return;
+    }
+
+    _hasInitialCameraFocused = true;
+    _animateCameraToPoint(_lastKnownPoint!);
+  }
+
+  Future<void> _loadUserProfile() async {
+    final info = await UserService().fetchUserInfo();
+    if (!mounted || info == null) return;
+
+    final weight = (info['weight'] as num?)?.toDouble();
+    final height = (info['height'] as num?)?.toDouble();
+    final ageRaw = info['age'] ?? info['Age'];
+    final age = ageRaw is int ? ageRaw : int.tryParse(ageRaw?.toString() ?? '');
+
+    setState(() {
+      if (weight != null && weight > 0) {
+        _userWeightKg = weight;
+      }
+      if (height != null && height > 0) {
+        _userHeightCm = height;
+      }
+      if (age != null && age > 0) {
+        _userAge = age;
+      }
+    });
+  }
+
+  ActivityCalculator get _activityCalculator => ActivityCalculator(
+        weightKg: _userWeightKg,
+        heightCm: _userHeightCm,
+        age: _userAge,
+      );
+
+  bool get _isWorkoutMetricsActive =>
+      !_isGuidedWorkout || _hasReachedWorkoutStart;
+
+  void _resetWorkoutMetricsAtRouteStart() {
+    _totalDistance = 0;
+    _trackedRoutePoints.clear();
+    _elevationGainM = 0;
+    _lastElevation = null;
+    _workoutStartedAt = DateTime.now();
+    _accumulatedPause = Duration.zero;
+    _pauseStartedAt = null;
+    _isManualPaused = false;
+    _isAutoPaused = false;
+    _autoPauseCandidateSince = null;
+    _autoResumeCandidateSince = null;
+    _elapsed = Duration.zero;
+    _maxSpeedMs = 0;
+    _currentSpeedMs = 0;
+    _gpsTrackProcessor.reset();
   }
 
   void _notifyWorkoutUi() {
@@ -245,7 +735,7 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   WorkoutMotionStatus get _motionStatus {
-    if (_isManualPaused) return WorkoutMotionStatus.paused;
+    if (_isWorkoutPaused) return WorkoutMotionStatus.paused;
     if (_currentSpeedMs < 0.3) return WorkoutMotionStatus.stationary;
     return WorkoutMotionStatus.moving;
   }
@@ -257,7 +747,7 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     }
     var elapsed = DateTime.now().difference(_workoutStartedAt!);
     elapsed -= _accumulatedPause;
-    if (_isManualPaused && _pauseStartedAt != null) {
+    if (_isWorkoutPaused && _pauseStartedAt != null) {
       elapsed -= DateTime.now().difference(_pauseStartedAt!);
     }
     _elapsed = elapsed.isNegative ? Duration.zero : elapsed;
@@ -271,23 +761,132 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   double get _calories {
-    final calculator = ActivityCalculator(weightKg: _userWeightKg);
-    return calculator.calculateWalkingCalories(
+    if (!_isWorkoutMetricsActive) return 0;
+    return _activityCalculator.calculateCalories(
+      activityType: _selectedActivity,
+      duration: _elapsed,
       distanceMeters: _totalDistance,
-      met: _selectedActivity.met,
-      averageSpeedKmH: _avgSpeedKmh > 0 ? _avgSpeedKmh : 5,
+      avgSpeedKmh: _avgSpeedKmh,
     );
   }
 
-  int get _steps => ActivityCalculator(weightKg: _userWeightKg)
-      .estimateStepsByDistance(_totalDistance);
+  int get _steps {
+    if (!_isWorkoutMetricsActive) return 0;
+    return _activityCalculator.estimateStepsByDistance(_totalDistance);
+  }
 
   int get _cadence {
     if (_elapsed.inMinutes <= 0) return 0;
     return (_steps / _elapsed.inMinutes).round();
   }
 
+  bool get _isWorkoutRouteComplete =>
+      _isGuidedWorkout &&
+      _hasReachedWorkoutStart &&
+      _guidedProgress >= _workoutCompleteProgress;
+
+  double get _workoutCompletionPercent {
+    if (!_isGuidedWorkout) return 100;
+
+    final routeTracker = _routeProgressTracker;
+    if (routeTracker == null) return 100;
+
+    if (!_hasReachedWorkoutStart) {
+      final approachTracker = _approachProgressTracker;
+      if (approachTracker != null) {
+        final total = approachTracker.totalMeters + routeTracker.totalMeters;
+        if (total <= 0) return 0;
+        return (approachTracker.completedMeters / total * 100).clamp(0, 99);
+      }
+      return 0;
+    }
+
+    return (_guidedProgress * 100).clamp(0, 100);
+  }
+
+  bool _isNearFinishPoint(double latitude, double longitude) {
+    final points = _getActivePlannedRoutePoints();
+    if (points.length < 2) return false;
+    final finish = points.last;
+    return Geolocator.distanceBetween(
+          latitude,
+          longitude,
+          finish.latitude,
+          finish.longitude,
+        ) <=
+        _workoutStartThresholdM;
+  }
+
+  void _checkAutoFinishWorkout(
+    double latitude,
+    double longitude,
+    RouteProgressSnapshot? snapshot,
+  ) {
+    if (!_isTracking ||
+        _isWorkoutPaused ||
+        _workoutAutoFinishing ||
+        !_isGuidedWorkout ||
+        !_hasReachedWorkoutStart) {
+      return;
+    }
+
+    final progress = snapshot?.progress ?? _guidedProgress;
+    if (progress < _workoutCompleteProgress &&
+        !_isNearFinishPoint(latitude, longitude)) {
+      return;
+    }
+
+    _workoutAutoFinishing = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_isTracking) {
+        _workoutAutoFinishing = false;
+        return;
+      }
+      unawaited(_completeWorkout());
+    });
+  }
+
+  Future<bool> _confirmIncompleteWorkoutSave(double percent) async {
+    final percentLabel =
+        percent >= 10 ? '${percent.round()}' : percent.toStringAsFixed(1);
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Тренировка не завершена'),
+        content: Text(
+          'Вы прошли $percentLabel% маршрута.\n\n'
+          'Вы не закончили тренировку. Сохранить результат?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Продолжить'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+
+    return result ?? false;
+  }
+
+  Future<void> _onStopWorkoutPressed() async {
+    if (!_isTracking || _isLocked) return;
+
+    if (_isGuidedWorkout && !_isWorkoutRouteComplete) {
+      final save = await _confirmIncompleteWorkoutSave(_workoutCompletionPercent);
+      if (!mounted || !save) return;
+    }
+
+    await _completeWorkout();
+  }
+
   void _startCompassUpdates() {
+    _compassStream?.cancel();
     _compassStream = FlutterCompass.events?.listen((event) {
       final heading = event.heading;
       if (heading != null &&
@@ -321,10 +920,20 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(MapScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.isTabActive != widget.isTabActive) {
+      if (widget.isTabActive) {
+        _onTabBecameActive();
+      } else {
+        _onTabBecameInactive();
+      }
+    }
+
     if (!oldWidget.isTabActive && widget.isTabActive && _isMapReady) {
       if (_lastKnownPoint != null) {
         _updateCurrentLocationMarker(_lastKnownPoint!, _lastKnownHeading);
       }
+      _tryInitialCameraFocus();
       if (_isTracking) {
         _redrawWorkoutRoutes();
       }
@@ -341,16 +950,34 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       final requested = await Geolocator.requestPermission();
       if (requested != LocationPermission.always &&
           requested != LocationPermission.whileInUse) {
-        if (mounted) showSnackBar(context, 'Нет разрешения на геолокацию');
+        if (mounted) AppSnackBar.show(context, 'Нет разрешения на геолокацию');
         return;
       }
     }
 
     _positionStream?.cancel();
+
+    try {
+      final position = await Geolocator.getCurrentPosition();
+      if (mounted) {
+        _lastKnownPoint = Point(
+          latitude: position.latitude,
+          longitude: position.longitude,
+        );
+        _lastKnownHeading = position.heading;
+        if (_isMapReady) {
+          _updateCurrentLocationMarker(_lastKnownPoint!, _lastKnownHeading);
+        }
+        _tryInitialCameraFocus();
+      }
+    } catch (_) {}
+
     _positionStream = Geolocator.getPositionStream(
       locationSettings: LocationSettings(
-        accuracy: LocationAccuracy.best,
-        distanceFilter: _isTracking ? 2 : 8,
+        accuracy: _isTracking
+            ? LocationAccuracy.bestForNavigation
+            : LocationAccuracy.high,
+        distanceFilter: _isTracking ? 5 : 8,
       ),
     ).listen((position) {
       final point =
@@ -361,78 +988,146 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         _updateCurrentLocationMarker(point, position.heading);
       }
 
+      if (!_isTracking) {
+        _tryInitialCameraFocus();
+      }
+
+      if (!_isTracking &&
+          _routePoints.length == 1 &&
+          !_hasPlannedRouteGeometry()) {
+        _onRouteParametersUpdated();
+      }
+
       if (!_isTracking) return;
 
       _mutateState(() {
         _currentSpeedMs = position.speed >= 0 ? position.speed : 0;
         if (_currentSpeedMs > _maxSpeedMs) _maxSpeedMs = _currentSpeedMs;
 
-        final ele = position.altitude;
-        if (_lastElevation != null && ele > _lastElevation!) {
-          _elevationGainM += ele - _lastElevation!;
+        if (_isWorkoutMetricsActive) {
+          final ele = position.altitude;
+          if (_lastElevation != null && ele > _lastElevation!) {
+            _elevationGainM += ele - _lastElevation!;
+          }
+          _lastElevation = ele;
         }
-        _lastElevation = ele;
       });
 
-      if (_isManualPaused) return;
+      final speedMs = (position.speed >= 0 ? position.speed : 0).toDouble();
+      _evaluateAutoPause(speedMs);
+
+      if (_isWorkoutPaused) return;
 
       RouteProgressSnapshot? guidedProgress;
+      PathSnapResult? routeSnap;
       if (_isGuidedWorkout && _routeProgressTracker != null) {
-        guidedProgress = _routeProgressTracker!.update(
-          point.latitude,
-          point.longitude,
-        );
-      }
+        if (_routePoints.length >= 2 && !_hasReachedWorkoutStart) {
+          final distToStart = Geolocator.distanceBetween(
+            point.latitude,
+            point.longitude,
+            _routePoints.first.latitude,
+            _routePoints.first.longitude,
+          );
 
-      final isStationary = position.speed < 0.3;
-      final shouldRecordPoint = !isStationary &&
-          (_trackedRoutePoints.isEmpty ||
-              !_isSameLocation(_trackedRoutePoints.last, point));
-
-      if (shouldRecordPoint || guidedProgress != null) {
-        _mutateState(() {
-          if (shouldRecordPoint) {
-            if (_trackedRoutePoints.isNotEmpty) {
-              _totalDistance += Geolocator.distanceBetween(
-                _trackedRoutePoints.last.latitude,
-                _trackedRoutePoints.last.longitude,
-                point.latitude,
-                point.longitude,
-              );
-            }
-            _trackedRoutePoints.add(
-              TrackPoint(
-                latitude: point.latitude,
-                longitude: point.longitude,
-                time: position.timestamp,
-                elevation: position.altitude,
-              ),
+          if (distToStart <= _workoutStartThresholdM) {
+            _mutateState(() {
+              _hasReachedWorkoutStart = true;
+              _approachRoutePoints = null;
+              _approachProgressTracker = null;
+              _resetWorkoutMetricsAtRouteStart();
+            });
+            _redrawWorkoutRoutes();
+            guidedProgress = _routeProgressTracker!.update(
+              point.latitude,
+              point.longitude,
+            );
+            routeSnap = _routeProgressTracker!.lastPathSnap;
+          } else if (_approachProgressTracker != null) {
+            final approachProgress = _approachProgressTracker!.update(
+              point.latitude,
+              point.longitude,
+            );
+            routeSnap = _approachProgressTracker!.lastPathSnap;
+            guidedProgress = RouteProgressSnapshot(
+              totalMeters: approachProgress.totalMeters +
+                  _routeProgressTracker!.totalMeters,
+              completedMeters: approachProgress.completedMeters,
+              remainingMeters: approachProgress.remainingMeters +
+                  _routeProgressTracker!.totalMeters,
+              progress: 0,
+              isOffRoute: approachProgress.isOffRoute,
+              offRouteDistanceM: approachProgress.offRouteDistanceM,
+            );
+          } else {
+            guidedProgress = RouteProgressSnapshot(
+              totalMeters: distToStart + _routeProgressTracker!.totalMeters,
+              completedMeters: 0,
+              remainingMeters: distToStart + _routeProgressTracker!.totalMeters,
+              progress: 0,
+              isOffRoute: false,
+              offRouteDistanceM: 0,
             );
           }
+        } else {
+          guidedProgress = _routeProgressTracker!.update(
+            point.latitude,
+            point.longitude,
+          );
+          routeSnap = _routeProgressTracker!.lastPathSnap;
+        }
+      }
 
-          if (guidedProgress != null) {
-            _guidedRemainingM = guidedProgress.remainingMeters;
-            _guidedProgress = guidedProgress.progress;
-            _isOffRoute = guidedProgress.isOffRoute;
+      final acceptResult = _isWorkoutMetricsActive
+          ? _gpsTrackProcessor.accept(
+              position: position,
+              routeSnap: routeSnap,
+              preferRouteSnap: _isGuidedWorkout,
+            )
+          : null;
+      final progressSnapshot = guidedProgress;
+
+      if (acceptResult != null || progressSnapshot != null) {
+        _mutateState(() {
+          if (acceptResult != null) {
+            _totalDistance += acceptResult.addedDistanceM;
+            _trackedRoutePoints.add(acceptResult.trackPoint);
+          }
+
+          if (progressSnapshot != null) {
+            _guidedRemainingM = progressSnapshot.remainingMeters;
+            _guidedProgress = progressSnapshot.progress;
+            _isOffRoute = progressSnapshot.isOffRoute;
           }
         });
 
-        if (shouldRecordPoint) {
+        if (acceptResult != null) {
           _redrawWorkoutRoutes();
         }
       }
 
-      if (shouldRecordPoint && _isMapReady && !_isMinimized) {
+      if (progressSnapshot != null) {
+        _checkAutoFinishWorkout(
+          point.latitude,
+          point.longitude,
+          progressSnapshot,
+        );
+      }
+
+      if (acceptResult != null && _isMapReady && !_isMinimized) {
+        final trackedPoint = acceptResult.trackPoint;
         _mapWindow!.map.move(
-          CameraPosition(point, zoom: _mapZoom, azimuth: 0, tilt: 0),
+          CameraPosition(
+            Point(
+              latitude: trackedPoint.latitude,
+              longitude: trackedPoint.longitude,
+            ),
+            zoom: _mapZoom,
+            azimuth: 0,
+            tilt: 0,
+          ),
         );
       }
     });
-  }
-
-  bool _isSameLocation(TrackPoint a, Point b, {double threshold = 0.00003}) {
-    return (a.latitude - b.latitude).abs() < threshold &&
-        (a.longitude - b.longitude).abs() < threshold;
   }
 
   void _updateCurrentLocationMarker(Point point, double? heading) {
@@ -462,25 +1157,11 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   List<Point> _getActivePlannedRoutePoints() {
-    Polyline? geometry;
-    switch (_currentRoutingType) {
-      case RoutingType.driving:
-        if (_drivingRoutes.isNotEmpty) {
-          geometry = _drivingRoutes.first.geometry;
-        }
-        break;
-      case RoutingType.pedestrian:
-        if (_pedestrianRoutes.isNotEmpty) {
-          geometry = _pedestrianRoutes.first.geometry;
-        }
-        break;
-      case RoutingType.publicTransport:
-        if (_publicTransportRoutes.isNotEmpty) {
-          geometry = _publicTransportRoutes.first.geometry;
-        }
-        break;
+    if (_savedRouteTrackPoints != null && _savedRouteTrackPoints!.length >= 2) {
+      return List<Point>.from(_savedRouteTrackPoints!);
     }
 
+    final geometry = _getActivePlannedRouteGeometry();
     if (geometry != null && geometry.points.isNotEmpty) {
       return List<Point>.from(geometry.points);
     }
@@ -492,17 +1173,177 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     return const [];
   }
 
+  Polyline? _getActivePlannedRouteGeometry() {
+    switch (_currentRoutingType) {
+      case RoutingType.pedestrian:
+        if (_pedestrianRoutes.isNotEmpty) {
+          return _pedestrianRoutes.first.geometry;
+        }
+        break;
+      case RoutingType.publicTransport:
+        if (_publicTransportRoutes.isNotEmpty) {
+          return _publicTransportRoutes.first.geometry;
+        }
+        break;
+    }
+    return null;
+  }
+
+  bool _hasPlannedRouteGeometry() => _getActivePlannedRouteGeometry() != null;
+
+  List<RequestPoint>? _buildRoutingRequestPoints() {
+    if (_routePoints.isEmpty) return null;
+
+    if (_routePoints.length == 1) {
+      if (_lastKnownPoint == null) return null;
+      return [
+        RequestPoint(
+          _lastKnownPoint!,
+          RequestPointType.Waypoint,
+          null,
+          null,
+          null,
+        ),
+        RequestPoint(
+          _routePoints.first,
+          RequestPointType.Waypoint,
+          null,
+          null,
+          null,
+        ),
+      ];
+    }
+
+    return [
+      RequestPoint(
+        _routePoints.first,
+        RequestPointType.Waypoint,
+        null,
+        null,
+        null,
+      ),
+      ..._routePoints
+          .sublist(1, _routePoints.length - 1)
+          .map(
+            (p) => RequestPoint(p, RequestPointType.Viapoint, null, null, null),
+          ),
+      RequestPoint(
+        _routePoints.last,
+        RequestPointType.Waypoint,
+        null,
+        null,
+        null,
+      ),
+    ];
+  }
+
+  void _cancelApproachRouteRequest() {
+    _approachPedestrianSession?.cancel();
+    _approachPublicTransportSession?.cancel();
+    _approachPedestrianSession = null;
+    _approachPublicTransportSession = null;
+  }
+
+  void _clearApproachRoute() {
+    _cancelApproachRouteRequest();
+    _approachRoutePoints = null;
+    _approachProgressTracker = null;
+  }
+
+  void _onApproachRouteResolved(List<Point> points) {
+    if (points.length < 2) return;
+
+    setState(() {
+      _approachRoutePoints = List<Point>.from(points);
+      _approachProgressTracker = RouteProgressTracker(_approachRoutePoints!);
+    });
+
+    if (_isTracking) {
+      _redrawWorkoutRoutes();
+    }
+  }
+
+  void _requestApproachRoute() {
+    if (_lastKnownPoint == null || _routePoints.isEmpty) return;
+    if (!_routersReady) {
+      unawaited(_ensureRoutersReady().then((_) {
+        if (mounted) _requestApproachRoute();
+      }));
+      return;
+    }
+
+    final distToStart = Geolocator.distanceBetween(
+      _lastKnownPoint!.latitude,
+      _lastKnownPoint!.longitude,
+      _routePoints.first.latitude,
+      _routePoints.first.longitude,
+    );
+    if (distToStart <= _workoutStartThresholdM) return;
+
+    _cancelApproachRouteRequest();
+
+    final points = [
+      RequestPoint(
+        _lastKnownPoint!,
+        RequestPointType.Waypoint,
+        null,
+        null,
+        null,
+      ),
+      RequestPoint(
+        _routePoints.first,
+        RequestPointType.Waypoint,
+        null,
+        null,
+        null,
+      ),
+    ];
+
+    try {
+      switch (_currentRoutingType) {
+        case RoutingType.pedestrian:
+          _approachPedestrianSession = _pedestrianRouter.requestRoutes(
+            const TimeOptions(),
+            const RouteOptions(FitnessOptions(avoidSteep: false)),
+            _approachPedestrianRouteListener,
+            points: points,
+          );
+          break;
+        case RoutingType.publicTransport:
+          _approachPublicTransportSession =
+              _publicTransportRouter.requestRoutes(
+            const TransitOptions(TimeOptions()),
+            const RouteOptions(FitnessOptions(avoidSteep: false)),
+            _approachPublicTransportRouteListener,
+            points: points,
+          );
+          break;
+      }
+    } catch (_) {}
+  }
+
   void _redrawWorkoutRoutes() {
     final routes = _routesCollection;
     if (!_isMapReady || routes == null) return;
     routes.clear();
+
+    if (_approachRoutePoints != null &&
+        _approachRoutePoints!.length >= 2 &&
+        !_hasReachedWorkoutStart) {
+      routes
+          .addPolylineWithGeometry(Polyline(_approachRoutePoints!))
+          .applyAlternativeRouteStyle();
+    }
 
     if (_isGuidedWorkout && _routeProgressTracker != null) {
       final planned = Polyline(_routeProgressTracker!.pathPoints);
       routes.addPolylineWithGeometry(planned).applyMainRouteStyle();
     }
 
-    if (_trackedRoutePoints.length < 2) return;
+    if (_trackedRoutePoints.length < 2) {
+      _scheduleMapRefresh();
+      return;
+    }
 
     final tracked = Polyline(
       _trackedRoutePoints
@@ -510,43 +1351,86 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           .toList(),
     );
     routes.addPolylineWithGeometry(tracked).applyTrackedWorkoutPathStyle();
+    _scheduleMapRefresh();
   }
 
   void startTracking() => _startTracking();
 
   void _startTracking() {
+    _sensorPauseTimer?.cancel();
+    _ensureLocationActive();
+    if (_routePoints.isEmpty) {
+      AppSnackBar.show(context, 'Поставьте точку на карте');
+      return;
+    }
+
+    if (_routePoints.length == 1 && _lastKnownPoint != null) {
+      _onRouteParametersUpdated();
+    }
+
     final plannedPoints = _getActivePlannedRoutePoints();
     if (plannedPoints.length < 2) {
-      showSnackBar(
+      AppSnackBar.show(
         context,
-        'Поставьте две точки на карте и дождитесь построения маршрута',
+        _routePoints.length == 1
+            ? 'Дождитесь построения маршрута от вас до точки'
+            : 'Поставьте точки на карте и дождитесь построения маршрута',
       );
       return;
     }
 
     final tracker = RouteProgressTracker(plannedPoints);
+    final needsApproach = _routePoints.length >= 2 && _lastKnownPoint != null;
+    final distToStart = needsApproach
+        ? Geolocator.distanceBetween(
+            _lastKnownPoint!.latitude,
+            _lastKnownPoint!.longitude,
+            _routePoints.first.latitude,
+            _routePoints.first.longitude,
+          )
+        : 0.0;
+    final reachedStart = !needsApproach || distToStart <= _workoutStartThresholdM;
+    final initialRemaining = reachedStart
+        ? tracker.totalMeters
+        : distToStart + tracker.totalMeters;
 
     setState(() {
       _isTracking = true;
       _isGuidedWorkout = true;
       _routeProgressTracker = tracker;
-      _guidedRemainingM = tracker.totalMeters;
+      _hasReachedWorkoutStart = reachedStart;
+      _guidedRemainingM = initialRemaining;
       _guidedProgress = 0;
       _isOffRoute = false;
       _isMinimized = false;
       _isLocked = false;
       _isManualPaused = false;
+      _isAutoPaused = false;
+      _autoPauseCandidateSince = null;
+      _autoResumeCandidateSince = null;
       _trackedRoutePoints.clear();
       _totalDistance = 0.0;
       _currentSpeedMs = 0.0;
       _maxSpeedMs = 0.0;
       _elevationGainM = 0.0;
       _lastElevation = null;
-      _workoutStartedAt = DateTime.now();
+      _workoutStartedAt = reachedStart ? DateTime.now() : null;
       _accumulatedPause = Duration.zero;
       _pauseStartedAt = null;
       _elapsed = Duration.zero;
+      _approachRoutePoints = null;
+      _approachProgressTracker = null;
+      _workoutAutoFinishing = false;
     });
+
+    _gpsTrackProcessor.reset();
+    if (_sensorsActive) {
+      _startLocationUpdates();
+    }
+
+    if (!reachedStart) {
+      _requestApproachRoute();
+    }
     _tickTimer?.cancel();
     _tickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || !_isTracking) return;
@@ -606,7 +1490,7 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _finishWorkout() async {
+  Future<void> _completeWorkout() async {
     if (!_isTracking) return;
     _tickTimer?.cancel();
     final session = _buildSessionData();
@@ -615,21 +1499,28 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _isTracking = false;
       _isGuidedWorkout = false;
       _routeProgressTracker = null;
+      _hasReachedWorkoutStart = true;
       _guidedRemainingM = 0;
       _guidedProgress = 0;
       _isOffRoute = false;
       _isMinimized = false;
       _isLocked = false;
       _isManualPaused = false;
+      _isAutoPaused = false;
+      _autoPauseCandidateSince = null;
+      _autoResumeCandidateSince = null;
+      _workoutAutoFinishing = false;
     });
+    _clearApproachRoute();
     _notifyWorkoutUi();
+    _syncSensorsState();
 
     if (session.points.length < 2) {
       setState(() {
         _trackedRoutePoints.clear();
         _totalDistance = 0;
       });
-      showSnackBar(context, 'Слишком короткая тренировка для сохранения');
+      AppSnackBar.show(context, 'Слишком короткая тренировка для сохранения');
       return;
     }
 
@@ -659,7 +1550,13 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         }
         _pauseStartedAt = null;
         _isManualPaused = false;
+        _isAutoPaused = false;
+        _autoPauseCandidateSince = null;
+        _autoResumeCandidateSince = null;
       } else {
+        _isAutoPaused = false;
+        _autoPauseCandidateSince = null;
+        _autoResumeCandidateSince = null;
         _pauseStartedAt = DateTime.now();
         _isManualPaused = true;
       }
@@ -668,18 +1565,26 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   void _centerCameraOnCurrentLocation() {
     if (_currentLocationPlacemark == null || _mapWindow == null) {
-      showSnackBar(context, 'Местоположение недоступно');
+      AppSnackBar.show(context, 'Местоположение недоступно');
       return;
     }
-    _mapWindow!.map.move(
-      CameraPosition(_currentLocationPlacemark!.geometry,
-          zoom: _mapZoom, azimuth: 0, tilt: 0),
-    );
+    _animateCameraToPoint(_currentLocationPlacemark!.geometry);
   }
 
   void _adjustZoom(double delta) {
-    _mapZoom = (_mapZoom + delta).clamp(3.0, 20.0);
-    _centerCameraOnCurrentLocation();
+    if (_mapWindow == null) return;
+    final current = _mapWindow!.map.cameraPosition;
+    final newZoom = (current.zoom + delta).clamp(3.0, 20.0);
+    _mapZoom = newZoom;
+    _mapWindow!.map.move(
+      CameraPosition(
+        current.target,
+        zoom: newZoom,
+        azimuth: current.azimuth,
+        tilt: current.tilt,
+      ),
+      animation: _initialCameraAnimation,
+    );
   }
 
   void _createMapObjects(MapWindow mapWindow) {
@@ -691,7 +1596,8 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _userLocationCollection = mapWindow.map.mapObjects.addCollection();
 
     if (widget.gpxPath != null) {
-      GeometryProvider.loadAndParseGPX(context, widget.gpxPath!).then((points) {
+      GeometryProvider.loadAndParseGPX(widget.gpxPath!).then((points) {
+        if (!mounted) return;
         setState(() => _routePoints = points);
         _onRouteParametersUpdated();
       });
@@ -705,30 +1611,66 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
     if (_lastKnownPoint != null) {
       _updateCurrentLocationMarker(_lastKnownPoint!, _lastKnownHeading);
+      _tryInitialCameraFocus();
     }
+    _ensureCompassActive();
   }
 
   void _onRouteParametersUpdated() {
     if (!_isMapReady) return;
+    if (!_routersReady) {
+      unawaited(_ensureRoutersReady().then((_) {
+        if (mounted) _onRouteParametersUpdated();
+      }));
+      return;
+    }
 
     final placemarks = _placemarksCollection;
     final routes = _routesCollection;
     if (placemarks == null || routes == null) return;
 
-    _drivingSession?.cancel();
     _pedestrianSession?.cancel();
     _publicTransportSession?.cancel();
-    _drivingSession = null;
     _pedestrianSession = null;
     _publicTransportSession = null;
 
     placemarks.clear();
     if (!_isTracking) routes.clear();
 
-    if (_routePoints.isEmpty) return;
+    if (_routePoints.isEmpty) {
+      _scheduleMapRefresh();
+      return;
+    }
+
+    if (_savedRouteTrackPoints != null &&
+        _savedRouteTrackPoints!.length >= 2 &&
+        !_isTracking) {
+      if (!_hideMapEndpoints) {
+        final start = placemarks.addPlacemark()
+          ..geometry = _savedRouteTrackPoints!.first;
+        start.setIcon(pointImageProvider);
+        start.setIconStyle(const IconStyle(scale: 1.0, zIndex: 20.0));
+
+        final finish = placemarks.addPlacemark()
+          ..geometry = _savedRouteTrackPoints!.last;
+        finish.setIcon(finishPointImageProvider);
+        finish.setIconStyle(const IconStyle(scale: 1.5, zIndex: 20.0));
+      }
+
+      routes
+          .addPolylineWithGeometry(Polyline(_savedRouteTrackPoints!))
+          .applyMainRouteStyle();
+      _scheduleMapRefresh();
+      return;
+    }
 
     _routePoints.forEachIndexed((index, point) {
-      final isFinish = index == _routePoints.length - 1;
+      final isFinish =
+          _routePoints.length == 1 || index == _routePoints.length - 1;
+      final isStart = index == 0;
+      if (_hideMapEndpoints && (isStart || isFinish)) {
+        return;
+      }
       final placemark = placemarks.addPlacemark()..geometry = point;
       placemark.setIcon(
         isFinish ? finishPointImageProvider : pointImageProvider,
@@ -739,38 +1681,17 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       ));
     });
 
-    if (_routePoints.length < 2) return;
-
-    final points = <RequestPoint>[
-      RequestPoint(
-        _routePoints.first,
-        RequestPointType.Waypoint,
-        null,
-        null,
-        null,
-      ),
-      ..._routePoints
-          .sublist(1, _routePoints.length - 1)
-          .map((p) => RequestPoint(p, RequestPointType.Viapoint, null, null, null)),
-      RequestPoint(
-        _routePoints.last,
-        RequestPointType.Waypoint,
-        null,
-        null,
-        null,
-      ),
-    ];
+    final points = _buildRoutingRequestPoints();
+    if (points == null) {
+      if (_routePoints.length == 1 && mounted) {
+        AppSnackBar.show(context, 'Ожидание GPS для построения маршрута');
+      }
+      _scheduleMapRefresh();
+      return;
+    }
 
     try {
       switch (_currentRoutingType) {
-        case RoutingType.driving:
-          _drivingSession = _drivingRouter.requestRoutes(
-            const DrivingOptions(routesCount: 3),
-            const DrivingVehicleOptions(),
-            _drivingRouteListener,
-            points: points,
-          );
-          break;
         case RoutingType.pedestrian:
           _pedestrianSession = _pedestrianRouter.requestRoutes(
             const TimeOptions(),
@@ -790,17 +1711,10 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       }
     } catch (e) {
       if (mounted) {
-        showSnackBar(context, 'Не удалось построить маршрут');
+        AppSnackBar.show(context, 'Не удалось построить маршрут');
       }
     }
-  }
-
-  void _onDrivingRoutesUpdated() {
-    if (_isTracking || !_isMapReady) return;
-    _routesCollection!.clear();
-    for (var i = 0; i < _drivingRoutes.length; i++) {
-      _createPolylineWithStyle(i, _drivingRoutes[i].geometry);
-    }
+    _scheduleMapRefresh();
   }
 
   void _onPedestrianRoutesUpdated() {
@@ -809,6 +1723,7 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     for (var i = 0; i < _pedestrianRoutes.length; i++) {
       _createPolylineWithStyle(i, _pedestrianRoutes[i].geometry);
     }
+    _scheduleMapRefresh();
   }
 
   void _onPublicTransportRoutesUpdated() {
@@ -817,6 +1732,7 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     for (var i = 0; i < _publicTransportRoutes.length; i++) {
       _createPolylineWithStyle(i, _publicTransportRoutes[i].geometry);
     }
+    _scheduleMapRefresh();
   }
 
   void _createPolylineWithStyle(int routeIndex, Polyline geometry) {
@@ -826,23 +1742,6 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     routeIndex == 0
         ? polyline.applyMainRouteStyle()
         : polyline.applyAlternativeRouteStyle();
-  }
-
-  Future<void> _saveRouteQuick() async {
-    String? path;
-    if (_isTracking && _trackedRoutePoints.isNotEmpty) {
-      path = await GeometryProvider.saveTrackedRouteAsGpx(_trackedRoutePoints);
-      if (path != null && mounted) {
-        showSnackBar(context, 'Трек сохранён локально');
-      }
-    } else if (_routePoints.isNotEmpty) {
-      path = await GeometryProvider.saveRouteAsGpx(_routePoints);
-      if (path != null && mounted) {
-        showSnackBar(context, 'Маршрут сохранён:\n$path');
-      }
-    } else if (mounted) {
-      showSnackBar(context, 'Нет данных для сохранения');
-    }
   }
 
   void _openMetricsSheet() {
@@ -877,22 +1776,28 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     return Stack(
       fit: StackFit.expand,
       children: [
-        Offstage(
-          offstage: !widget.isTabActive,
-          child: RepaintBoundary(
-            child: FlutterMapWidget(
-              onMapCreated: _createMapObjects,
-              onMapDispose: () {
-                _mapWindow?.map.removeInputListener(_inputListener);
-                _mapWindow = null;
-                _userLocationCollection = null;
-                _placemarksCollection = null;
-                _routesCollection = null;
-                _currentLocationPlacemark = null;
-              },
+        if (_mapSurfaceMounted)
+          Offstage(
+            offstage: !widget.isTabActive,
+            child: TickerMode(
+              enabled: widget.isTabActive,
+              child: RepaintBoundary(
+                child: FlutterMapWidget(
+                  onMapCreated: _createMapObjects,
+                  onMapDispose: () {
+                    _mapWindow?.map.removeInputListener(_inputListener);
+                    _mapWindow = null;
+                    _userLocationCollection = null;
+                    _placemarksCollection = null;
+                    _routesCollection = null;
+                    _currentLocationPlacemark = null;
+                  },
+                ),
+              ),
             ),
-          ),
-        ),
+          )
+        else
+          const ColoredBox(color: Color(0xFFF2F5F7)),
         if (showWorkoutUi)
           Positioned.fill(
             child: DecoratedBox(
@@ -910,28 +1815,39 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             ),
           ),
         if (widget.isTabActive && !_isTracking)
-          MapIdleOverlay(
-            selectedActivity: _selectedActivity,
-            onActivitySelected: (t) => setState(() => _selectedActivity = t),
-            onStartWorkout: _startTracking,
-            onCenterLocation: _centerCameraOnCurrentLocation,
-            onZoomIn: () => _adjustZoom(1),
-            onZoomOut: () => _adjustZoom(-1),
-            onClearRoutes: () {
-              setState(() => _routePoints = []);
-              showSnackBar(context, 'Все маршруты очищены');
-              _onRouteParametersUpdated();
-            },
-            onSwitchRoutingType: () {
-              setState(() {
-                _currentRoutingType = RoutingType.values[
-                    (_currentRoutingType.index + 1) %
-                        RoutingType.values.length];
-              });
-              _onRouteParametersUpdated();
-            },
-            onSaveRoute: _saveRouteQuick,
-            bottomPadding: bottomPad,
+          Positioned.fill(
+            child: MapIdleOverlay(
+              selectedActivity: _selectedActivity,
+              onActivitySelected: (t) => setState(() => _selectedActivity = t),
+              onStartWorkout: _startTracking,
+              onCenterLocation: _centerCameraOnCurrentLocation,
+              onZoomIn: () => _adjustZoom(1),
+              onZoomOut: () => _adjustZoom(-1),
+              onClearRoutes: () {
+                setState(() {
+                  _routePoints = [];
+                  _savedRouteTrackPoints = null;
+                });
+                _clearApproachRoute();
+                AppSnackBar.show(context, 'Все маршруты очищены');
+                _onRouteParametersUpdated();
+              },
+              onSwitchRoutingType: () {
+                setState(() {
+                  _currentRoutingType = RoutingType.values[
+                      (_currentRoutingType.index + 1) %
+                          RoutingType.values.length];
+                });
+                _onRouteParametersUpdated();
+              },
+              bottomPadding: bottomPad,
+              addressSearchService: _addressSuggestService,
+              getSearchBounds: _getSearchBoundingBox,
+              getUserPosition: () => _lastKnownPoint,
+              onAddressSelected: _onAddressSelected,
+              onStartAddressSelected: _onStartAddressSelected,
+              onEndAddressSelected: _onEndAddressSelected,
+            ),
           )
         else if (widget.isTabActive && _isMinimized)
           Positioned(
@@ -990,8 +1906,8 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             routeProgress: _guidedProgress,
             isOffRoute: _isOffRoute,
             isLocked: _isLocked,
-            isManualPaused: _isManualPaused,
-            onStop: _finishWorkout,
+            isManualPaused: _isWorkoutPaused,
+            onStop: _onStopWorkoutPressed,
             onStatusTap: _toggleManualPause,
             onToggleLock: () => setState(() => _isLocked = !_isLocked),
             onMinimize: minimizeWorkout,
@@ -1001,4 +1917,10 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       ],
     );
   }
+}
+
+enum _RouteAddressRole {
+  destination,
+  start,
+  end,
 }

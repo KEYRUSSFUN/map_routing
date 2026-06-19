@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:map_routing/data/services/friend_service.dart';
 import 'package:map_routing/data/services/user_search_service.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
@@ -108,9 +109,7 @@ class _AddUserSheetState extends State<AddUserSheet> {
       });
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка поиска: $e')),
-      );
+      AppSnackBar.show(context, 'Ошибка поиска: $e');
     }
   }
 
@@ -156,6 +155,7 @@ class _AddUserSheetState extends State<AddUserSheet> {
           key: ValueKey('$userId-${user['relationshipStatus']}'),
           userId: userId,
           name: user['name']?.toString() ?? 'Без имени',
+          avatarUrl: user['avatar_url']?.toString(),
           relationshipStatus:
               user['relationshipStatus']?.toString() ?? 'none',
           onAddFriend: (targetUserId) =>

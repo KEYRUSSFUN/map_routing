@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:map_routing/data/models/workout_activity_type.dart';
 import 'package:map_routing/features/map/presentation/map_ui_styles.dart';
+import 'package:map_routing/features/map/presentation/widgets/map_address_search_bar.dart';
+import 'package:map_routing/data/services/yandex_address_suggest_service.dart';
+import 'package:map_routing/data/models/address_suggestion.dart';
+import 'package:yandex_maps_mapkit/mapkit.dart' hide Icon;
 
-class MapIdleOverlay extends StatelessWidget {
+class MapIdleOverlay extends StatefulWidget {
   const MapIdleOverlay({
     super.key,
     required this.selectedActivity,
@@ -14,8 +17,13 @@ class MapIdleOverlay extends StatelessWidget {
     required this.onZoomOut,
     required this.onClearRoutes,
     required this.onSwitchRoutingType,
-    required this.onSaveRoute,
     required this.bottomPadding,
+    required this.addressSearchService,
+    required this.getSearchBounds,
+    this.getUserPosition,
+    required this.onAddressSelected,
+    this.onStartAddressSelected,
+    this.onEndAddressSelected,
   });
 
   final WorkoutActivityType selectedActivity;
@@ -26,16 +34,59 @@ class MapIdleOverlay extends StatelessWidget {
   final VoidCallback onZoomOut;
   final VoidCallback onClearRoutes;
   final VoidCallback onSwitchRoutingType;
-  final VoidCallback onSaveRoute;
   final double bottomPadding;
+  final YandexAddressSuggestService addressSearchService;
+  final BoundingBox Function() getSearchBounds;
+  final Point? Function()? getUserPosition;
+  final ValueChanged<AddressSuggestion> onAddressSelected;
+  final ValueChanged<AddressSuggestion>? onStartAddressSelected;
+  final ValueChanged<AddressSuggestion>? onEndAddressSelected;
 
+  @override
+  State<MapIdleOverlay> createState() => _MapIdleOverlayState();
+}
+
+class _MapIdleOverlayState extends State<MapIdleOverlay>
+    with WidgetsBindingObserver {
   static const _activities = WorkoutActivityType.values;
+  static const _keyboardGap = 20.0;
+  static const _sideToolsOffset = 140.0;
+  static const _animDuration = Duration(milliseconds: 220);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    setState(() {});
+  }
+
+  bool _isKeyboardVisible(BuildContext context) {
+    final view = View.of(context);
+    return view.viewInsets.bottom / view.devicePixelRatio > 0;
+  }
+
+  bool get _compactControls => _isKeyboardVisible(context);
 
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.paddingOf(context).top;
+    final compact = _compactControls;
+    final controlsBottom = compact ? _keyboardGap : widget.bottomPadding;
+    final sideControlsBottom =
+        compact ? _keyboardGap : widget.bottomPadding + _sideToolsOffset;
 
     return Stack(
+      fit: StackFit.expand,
       children: [
         Positioned(
           top: top + 8,
@@ -43,45 +94,15 @@ class MapIdleOverlay extends StatelessWidget {
           right: 12,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 48,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.92),
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x1A000000),
-                            blurRadius: 12,
-                            offset: Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.search_rounded,
-                              color: MapUiColors.body.withValues(alpha: 0.8)),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Поиск маршрутов, троп...',
-                              style: GoogleFonts.lexendDeca(
-                                fontSize: 14,
-                                color: MapUiColors.body,
-                              ),
-                            ),
-                          ),
-                          Icon(Icons.tune_rounded,
-                              color: MapUiColors.primaryGreen, size: 22),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+              MapAddressSearchBar(
+                searchService: widget.addressSearchService,
+                getSearchBounds: widget.getSearchBounds,
+                getUserPosition: widget.getUserPosition,
+                onAddressSelected: widget.onAddressSelected,
+                onStartAddressSelected: widget.onStartAddressSelected,
+                onEndAddressSelected: widget.onEndAddressSelected,
               ),
               const SizedBox(height: 12),
               SizedBox(
@@ -92,9 +113,9 @@ class MapIdleOverlay extends StatelessWidget {
                   separatorBuilder: (_, __) => const SizedBox(width: 8),
                   itemBuilder: (context, index) {
                     final type = _activities[index];
-                    final selected = type == selectedActivity;
+                    final selected = type == widget.selectedActivity;
                     return GestureDetector(
-                      onTap: () => onActivitySelected(type),
+                      onTap: () => widget.onActivitySelected(type),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -126,39 +147,45 @@ class MapIdleOverlay extends StatelessWidget {
             ],
           ),
         ),
-        Positioned(
+        AnimatedPositioned(
+          duration: _animDuration,
+          curve: Curves.easeOutCubic,
           right: 16,
-          bottom: bottomPadding + 140,
+          bottom: sideControlsBottom,
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _CircleTool(icon: Icons.add, onTap: onZoomIn),
+              _CircleTool(icon: Icons.add, onTap: widget.onZoomIn),
               const SizedBox(height: 8),
-              _CircleTool(icon: Icons.remove, onTap: onZoomOut),
+              _CircleTool(icon: Icons.remove, onTap: widget.onZoomOut),
             ],
           ),
         ),
-        Positioned(
+        AnimatedPositioned(
+          duration: _animDuration,
+          curve: Curves.easeOutCubic,
           left: 16,
-          bottom: bottomPadding + 140,
+          bottom: sideControlsBottom,
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _CircleTool(icon: Icons.delete_outline, onTap: onClearRoutes),
+              _CircleTool(icon: Icons.delete_outline, onTap: widget.onClearRoutes),
               const SizedBox(height: 8),
-              _CircleTool(icon: Icons.swap_horiz, onTap: onSwitchRoutingType),
-              const SizedBox(height: 8),
-              _CircleTool(icon: Icons.save_alt_outlined, onTap: onSaveRoute),
+              _CircleTool(icon: Icons.swap_horiz, onTap: widget.onSwitchRoutingType),
             ],
           ),
         ),
-        Positioned(
+        AnimatedPositioned(
+          duration: _animDuration,
+          curve: Curves.easeOutCubic,
           left: 0,
           right: 0,
-          bottom: bottomPadding + 0,
+          bottom: controlsBottom,
           child: Center(
             child: _CircleTool(
               icon: Icons.my_location_rounded,
-              onTap: onCenterLocation,
+              onTap: widget.onCenterLocation,
               iconColor: MapUiColors.primaryGreen,
               size: 52,
             ),

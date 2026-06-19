@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:map_routing/core/widgets/stride_track_logo.dart';
+import 'package:map_routing/core/widgets/app_snackbar.dart';
 
 abstract final class AuthColors {
   static const primaryGreen = Color(0xFF00E676);
@@ -17,42 +18,42 @@ abstract final class AuthColors {
 }
 
 TextStyle authTitleStyle() => GoogleFonts.lexendDeca(
-      fontSize: 28,
-      fontWeight: FontWeight.w700,
-      color: AuthColors.title,
-      height: 1.2,
-    );
+  fontSize: 28,
+  fontWeight: FontWeight.w700,
+  color: AuthColors.title,
+  height: 1.2,
+);
 
 TextStyle authSubtitleStyle() => GoogleFonts.lexendDeca(
-      fontSize: 14,
-      fontWeight: FontWeight.w400,
-      color: AuthColors.body,
-      height: 1.4,
-    );
+  fontSize: 14,
+  fontWeight: FontWeight.w400,
+  color: AuthColors.body,
+  height: 1.4,
+);
 
 TextStyle authLabelStyle() => GoogleFonts.lexendDeca(
-      fontSize: 13,
-      fontWeight: FontWeight.w400,
-      color: AuthColors.body,
-    );
+  fontSize: 13,
+  fontWeight: FontWeight.w400,
+  color: AuthColors.body,
+);
 
 TextStyle authFieldStyle() => GoogleFonts.lexendDeca(
-      fontSize: 15,
-      fontWeight: FontWeight.w400,
-      color: AuthColors.title,
-    );
+  fontSize: 15,
+  fontWeight: FontWeight.w400,
+  color: AuthColors.title,
+);
 
 TextStyle authHintStyle() => GoogleFonts.lexendDeca(
-      fontSize: 15,
-      fontWeight: FontWeight.w400,
-      color: AuthColors.hint,
-    );
+  fontSize: 15,
+  fontWeight: FontWeight.w400,
+  color: AuthColors.hint,
+);
 
 TextStyle authButtonStyle() => GoogleFonts.lexendDeca(
-      fontSize: 16,
-      fontWeight: FontWeight.w600,
-      color: Colors.white,
-    );
+  fontSize: 16,
+  fontWeight: FontWeight.w600,
+  color: Colors.white,
+);
 
 TextStyle authLinkStyle({Color color = AuthColors.primaryGreen}) =>
     GoogleFonts.lexendDeca(
@@ -62,23 +63,20 @@ TextStyle authLinkStyle({Color color = AuthColors.primaryGreen}) =>
     );
 
 TextStyle authFooterStyle() => GoogleFonts.lexendDeca(
-      fontSize: 14,
-      fontWeight: FontWeight.w400,
-      color: AuthColors.body,
-    );
+  fontSize: 14,
+  fontWeight: FontWeight.w400,
+  color: AuthColors.body,
+);
 
 TextStyle authHeaderBrandStyle() => GoogleFonts.lexendDeca(
-      fontSize: 16,
-      fontWeight: FontWeight.w800,
-      color: AuthColors.primaryGreen,
-      letterSpacing: -0.4,
-    );
+  fontSize: 16,
+  fontWeight: FontWeight.w800,
+  color: AuthColors.primaryGreen,
+  letterSpacing: -0.4,
+);
 
 class AuthScaffold extends StatelessWidget {
-  const AuthScaffold({
-    super.key,
-    required this.child,
-  });
+  const AuthScaffold({super.key, required this.child});
 
   final Widget child;
 
@@ -112,10 +110,7 @@ class AuthBrandHeader extends StatelessWidget {
 }
 
 class AuthFormCard extends StatelessWidget {
-  const AuthFormCard({
-    super.key,
-    required this.child,
-  });
+  const AuthFormCard({super.key, required this.child});
 
   final Widget child;
 
@@ -196,8 +191,10 @@ class _AuthTextFieldState extends State<AuthTextField> {
             errorText: widget.errorText,
             filled: true,
             fillColor: Colors.white,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
             prefixIcon: widget.prefixIcon != null
                 ? Icon(widget.prefixIcon, color: AuthColors.body, size: 20)
                 : null,
@@ -219,8 +216,10 @@ class _AuthTextFieldState extends State<AuthTextField> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: AuthColors.primaryGreen, width: 1.5),
+              borderSide: const BorderSide(
+                color: AuthColors.primaryGreen,
+                width: 1.5,
+              ),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
@@ -259,8 +258,9 @@ class AuthPrimaryButton extends StatelessWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: AuthColors.primaryGreen,
           foregroundColor: Colors.white,
-          disabledBackgroundColor:
-              AuthColors.primaryGreen.withValues(alpha: 0.6),
+          disabledBackgroundColor: AuthColors.primaryGreen.withValues(
+            alpha: 0.6,
+          ),
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           shape: RoundedRectangleBorder(
@@ -276,10 +276,7 @@ class AuthPrimaryButton extends StatelessWidget {
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
               )
-            : Text(
-                label,
-                style: authButtonStyle().copyWith(height: 1.2),
-              ),
+            : Text(label, style: authButtonStyle().copyWith(height: 1.2)),
       ),
     );
   }
@@ -297,8 +294,10 @@ class AuthDivider extends StatelessWidget {
         const Expanded(child: Divider(color: AuthColors.divider, thickness: 1)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(label,
-              style: authFooterStyle().copyWith(color: AuthColors.dividerText)),
+          child: Text(
+            label,
+            style: authFooterStyle().copyWith(color: AuthColors.dividerText),
+          ),
         ),
         const Expanded(child: Divider(color: AuthColors.divider, thickness: 1)),
       ],
@@ -307,19 +306,40 @@ class AuthDivider extends StatelessWidget {
 }
 
 class AuthSocialButtons extends StatelessWidget {
-  const AuthSocialButtons({super.key});
+  const AuthSocialButtons({
+    super.key,
+    this.onGooglePressed,
+    this.isGoogleLoading = false,
+  });
+
+  final VoidCallback? onGooglePressed;
+  final bool isGoogleLoading;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
         Expanded(
-            child:
-                _SocialButton(label: 'Google', icon: FontAwesomeIcons.google)),
+          child: _SocialButton(
+            label: 'Google',
+            icon: FontAwesomeIcons.google,
+            onPressed: isGoogleLoading ? null : onGooglePressed,
+            isLoading: isGoogleLoading,
+          ),
+        ),
         const SizedBox(width: 12),
         Expanded(
-            child:
-                _SocialButton(label: 'Яндекс', icon: FontAwesomeIcons.yandex)),
+          child: _SocialButton(
+            label: 'Яндекс',
+            icon: FontAwesomeIcons.yandex,
+            onPressed: () {
+              AppSnackBar.show(
+                context,
+                'Вход через Яндекс скоро будет доступен',
+              );
+            },
+          ),
+        ),
       ],
     );
   }
@@ -329,39 +349,47 @@ class _SocialButton extends StatelessWidget {
   const _SocialButton({
     required this.label,
     required this.icon,
+    this.onPressed,
+    this.isLoading = false,
   });
 
   final String label;
-  final IconData icon;
+  final FaIconData icon;
+  final VoidCallback? onPressed;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
     return OutlinedButton(
-      onPressed: () {},
+      onPressed: isLoading ? null : onPressed,
       style: OutlinedButton.styleFrom(
         foregroundColor: AuthColors.title,
         backgroundColor: Colors.white,
         side: const BorderSide(color: AuthColors.socialBorder),
         padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          FaIcon(icon, size: 18),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: GoogleFonts.lexendDeca(
-              fontSize: 15,
-              fontWeight: FontWeight.w400,
-              color: AuthColors.title,
+      child: isLoading
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                FaIcon(icon, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: GoogleFonts.lexendDeca(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w400,
+                    color: AuthColors.title,
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -390,7 +418,7 @@ class AuthDropdownField<T> extends StatelessWidget {
         Text(label, style: authLabelStyle()),
         const SizedBox(height: 8),
         DropdownButtonFormField<T>(
-          value: value,
+          initialValue: value,
           items: items,
           onChanged: onChanged,
           validator: validator,
@@ -403,16 +431,20 @@ class AuthDropdownField<T> extends StatelessWidget {
           decoration: InputDecoration(
             filled: true,
             fillColor: Colors.white,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: const BorderSide(color: AuthColors.border),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: AuthColors.primaryGreen, width: 1.5),
+              borderSide: const BorderSide(
+                color: AuthColors.primaryGreen,
+                width: 1.5,
+              ),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),

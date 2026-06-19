@@ -5,7 +5,10 @@ def register_blueprints(app):
     from .profile import profile_bp
     from .statistics import statistics_bp
     from .routes_bp import routes_bp
-    from .groups import groups_bp 
+    from .achievements import achievements_bp
+    from .challenges import challenges_bp
+    from .stories import stories_bp
+    from .moments import moments_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(friends_bp)
@@ -13,6 +16,9 @@ def register_blueprints(app):
     app.register_blueprint(profile_bp)
     app.register_blueprint(statistics_bp)
     app.register_blueprint(routes_bp)
-    app.register_blueprint(groups_bp) 
+    app.register_blueprint(achievements_bp)
+    app.register_blueprint(challenges_bp)
+    app.register_blueprint(stories_bp)
+    app.register_blueprint(moments_bp)
 
 __all__ = ['register_blueprints']

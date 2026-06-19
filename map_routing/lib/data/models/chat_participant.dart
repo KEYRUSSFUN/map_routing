@@ -1,13 +1,17 @@
+import 'package:map_routing/core/network/backend_urls.dart';
+
 class ChatParticipant {
   const ChatParticipant({
     required this.name,
     this.userId,
     this.isCreator = false,
+    this.avatarUrl,
   });
 
   final String name;
   final String? userId;
   final bool isCreator;
+  final String? avatarUrl;
 
   static List<ChatParticipant> fromJsonList(
     dynamic raw, {
@@ -29,6 +33,7 @@ class ChatParticipant {
           name: name,
           userId: id,
           isCreator: isCreator,
+          avatarUrl: absoluteBackendUrl(item['avatar_url']?.toString()),
         );
       }
       return ChatParticipant(name: item.toString());

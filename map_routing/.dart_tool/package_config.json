@@ -15,7 +15,7 @@
     },
     {
       "name": "async",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/async-2.13.0",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/async-2.13.1",
       "packageUri": "lib/",
       "languageVersion": "3.4"
     },
@@ -27,15 +27,15 @@
     },
     {
       "name": "characters",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/characters-1.4.0",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/characters-1.4.1",
       "packageUri": "lib/",
       "languageVersion": "3.4"
     },
     {
       "name": "checked_yaml",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/checked_yaml-2.0.3",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/checked_yaml-2.0.4",
       "packageUri": "lib/",
-      "languageVersion": "2.19"
+      "languageVersion": "3.8"
     },
     {
       "name": "cli_util",
@@ -48,6 +48,12 @@
       "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/clock-1.1.2",
       "packageUri": "lib/",
       "languageVersion": "3.4"
+    },
+    {
+      "name": "code_assets",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/code_assets-1.2.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.10"
     },
     {
       "name": "collection",
@@ -63,37 +69,37 @@
     },
     {
       "name": "cross_file",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/cross_file-0.3.4+2",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/cross_file-0.3.5+2",
       "packageUri": "lib/",
-      "languageVersion": "3.3"
+      "languageVersion": "3.8"
     },
     {
       "name": "crypto",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/crypto-3.0.6",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/crypto-3.0.7",
       "packageUri": "lib/",
       "languageVersion": "3.4"
     },
     {
       "name": "cupertino_icons",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/cupertino_icons-1.0.8",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/cupertino_icons-1.0.9",
       "packageUri": "lib/",
-      "languageVersion": "3.1"
+      "languageVersion": "3.9"
     },
     {
       "name": "dbus",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/dbus-0.7.12",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/dbus-0.7.14",
       "packageUri": "lib/",
       "languageVersion": "2.17"
     },
     {
       "name": "envied",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/envied-1.1.1",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/envied-1.3.5",
       "packageUri": "lib/",
-      "languageVersion": "3.0"
+      "languageVersion": "3.9"
     },
     {
       "name": "equatable",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/equatable-2.0.7",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/equatable-2.0.8",
       "packageUri": "lib/",
       "languageVersion": "2.12"
     },
@@ -105,7 +111,7 @@
     },
     {
       "name": "ffi",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/ffi-2.1.4",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/ffi-2.2.0",
       "packageUri": "lib/",
       "languageVersion": "3.7"
     },
@@ -117,27 +123,27 @@
     },
     {
       "name": "file_selector_linux",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/file_selector_linux-0.9.3+2",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/file_selector_linux-0.9.4",
       "packageUri": "lib/",
-      "languageVersion": "3.3"
+      "languageVersion": "3.8"
     },
     {
       "name": "file_selector_macos",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/file_selector_macos-0.9.4+3",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/file_selector_macos-0.9.5",
       "packageUri": "lib/",
-      "languageVersion": "3.6"
+      "languageVersion": "3.9"
     },
     {
       "name": "file_selector_platform_interface",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/file_selector_platform_interface-2.6.2",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/file_selector_platform_interface-2.7.0",
       "packageUri": "lib/",
-      "languageVersion": "3.0"
+      "languageVersion": "3.7"
     },
     {
       "name": "file_selector_windows",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/file_selector_windows-0.9.3+4",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/file_selector_windows-0.9.3+5",
       "packageUri": "lib/",
-      "languageVersion": "3.4"
+      "languageVersion": "3.8"
     },
     {
       "name": "fixnum",
@@ -153,9 +159,9 @@
     },
     {
       "name": "flutter",
-      "rootUri": "file:///E:/Projects/flutter/flutter/packages/flutter",
+      "rootUri": "file:///C:/flutter/packages/flutter",
       "packageUri": "lib/",
-      "languageVersion": "3.7"
+      "languageVersion": "3.10"
     },
     {
       "name": "flutter_compass",
@@ -207,27 +213,33 @@
     },
     {
       "name": "flutter_plugin_android_lifecycle",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_plugin_android_lifecycle-2.0.24",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_plugin_android_lifecycle-2.0.35",
       "packageUri": "lib/",
-      "languageVersion": "3.5"
+      "languageVersion": "3.10"
     },
     {
       "name": "flutter_test",
-      "rootUri": "file:///E:/Projects/flutter/flutter/packages/flutter_test",
+      "rootUri": "file:///C:/flutter/packages/flutter_test",
       "packageUri": "lib/",
-      "languageVersion": "3.7"
+      "languageVersion": "3.10"
+    },
+    {
+      "name": "flutter_timezone",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_timezone-4.1.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.4"
     },
     {
       "name": "flutter_web_plugins",
-      "rootUri": "file:///E:/Projects/flutter/flutter/packages/flutter_web_plugins",
+      "rootUri": "file:///C:/flutter/packages/flutter_web_plugins",
       "packageUri": "lib/",
-      "languageVersion": "3.7"
+      "languageVersion": "3.10"
     },
     {
       "name": "font_awesome_flutter",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/font_awesome_flutter-10.8.0",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/font_awesome_flutter-11.0.0",
       "packageUri": "lib/",
-      "languageVersion": "3.0"
+      "languageVersion": "3.9"
     },
     {
       "name": "geolocator",
@@ -243,19 +255,19 @@
     },
     {
       "name": "geolocator_apple",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/geolocator_apple-2.3.13",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/geolocator_apple-2.3.14",
       "packageUri": "lib/",
       "languageVersion": "3.5"
     },
     {
       "name": "geolocator_platform_interface",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/geolocator_platform_interface-4.2.6",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/geolocator_platform_interface-4.2.8",
       "packageUri": "lib/",
       "languageVersion": "3.5"
     },
     {
       "name": "geolocator_web",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/geolocator_web-4.1.3",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/geolocator_web-4.1.4",
       "packageUri": "lib/",
       "languageVersion": "3.5"
     },
@@ -267,13 +279,55 @@
     },
     {
       "name": "google_fonts",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/google_fonts-6.3.2",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/google_fonts-6.3.3",
       "packageUri": "lib/",
-      "languageVersion": "3.7"
+      "languageVersion": "3.9"
+    },
+    {
+      "name": "google_identity_services_web",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/google_identity_services_web-0.3.3+1",
+      "packageUri": "lib/",
+      "languageVersion": "3.4"
+    },
+    {
+      "name": "google_sign_in",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/google_sign_in-6.3.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.6"
+    },
+    {
+      "name": "google_sign_in_android",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/google_sign_in_android-6.2.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.6"
+    },
+    {
+      "name": "google_sign_in_ios",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/google_sign_in_ios-5.9.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.4"
+    },
+    {
+      "name": "google_sign_in_platform_interface",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/google_sign_in_platform_interface-2.5.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.4"
+    },
+    {
+      "name": "google_sign_in_web",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/google_sign_in_web-0.12.4+4",
+      "packageUri": "lib/",
+      "languageVersion": "3.4"
+    },
+    {
+      "name": "hooks",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/hooks-2.0.2",
+      "packageUri": "lib/",
+      "languageVersion": "3.10"
     },
     {
       "name": "http",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/http-1.4.0",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/http-1.6.0",
       "packageUri": "lib/",
       "languageVersion": "3.4"
     },
@@ -291,51 +345,63 @@
     },
     {
       "name": "image_picker",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker-1.1.2",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker-1.2.2",
       "packageUri": "lib/",
-      "languageVersion": "3.3"
+      "languageVersion": "3.9"
     },
     {
       "name": "image_picker_android",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_android-0.8.12+23",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_android-0.8.13+19",
+      "packageUri": "lib/",
+      "languageVersion": "3.12"
+    },
+    {
+      "name": "image_picker_for_web",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_for_web-3.1.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.8"
+    },
+    {
+      "name": "image_picker_ios",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_ios-0.8.13+6",
+      "packageUri": "lib/",
+      "languageVersion": "3.10"
+    },
+    {
+      "name": "image_picker_linux",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_linux-0.2.2",
       "packageUri": "lib/",
       "languageVersion": "3.6"
     },
     {
-      "name": "image_picker_for_web",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_for_web-3.0.6",
-      "packageUri": "lib/",
-      "languageVersion": "3.4"
-    },
-    {
-      "name": "image_picker_ios",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_ios-0.8.12+2",
-      "packageUri": "lib/",
-      "languageVersion": "3.4"
-    },
-    {
-      "name": "image_picker_linux",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_linux-0.2.1+2",
-      "packageUri": "lib/",
-      "languageVersion": "3.4"
-    },
-    {
       "name": "image_picker_macos",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_macos-0.2.1+2",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_macos-0.2.2+1",
       "packageUri": "lib/",
-      "languageVersion": "3.4"
+      "languageVersion": "3.9"
     },
     {
       "name": "image_picker_platform_interface",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_platform_interface-2.10.1",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_platform_interface-2.11.1",
       "packageUri": "lib/",
-      "languageVersion": "3.4"
+      "languageVersion": "3.7"
     },
     {
       "name": "image_picker_windows",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_windows-0.2.1+1",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_windows-0.2.2",
       "packageUri": "lib/",
-      "languageVersion": "2.19"
+      "languageVersion": "3.6"
+    },
+    {
+      "name": "jni",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/jni-1.0.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.3"
+    },
+    {
+      "name": "jni_flutter",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/jni_flutter-1.0.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.3"
     },
     {
       "name": "js",
@@ -345,25 +411,25 @@
     },
     {
       "name": "json_annotation",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/json_annotation-4.9.0",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/json_annotation-4.12.0",
       "packageUri": "lib/",
-      "languageVersion": "3.0"
+      "languageVersion": "3.9"
     },
     {
       "name": "leak_tracker",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/leak_tracker-10.0.9",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/leak_tracker-11.0.2",
       "packageUri": "lib/",
       "languageVersion": "3.2"
     },
     {
       "name": "leak_tracker_flutter_testing",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/leak_tracker_flutter_testing-3.0.9",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/leak_tracker_flutter_testing-3.0.10",
       "packageUri": "lib/",
       "languageVersion": "3.2"
     },
     {
       "name": "leak_tracker_testing",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/leak_tracker_testing-3.0.1",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/leak_tracker_testing-3.0.2",
       "packageUri": "lib/",
       "languageVersion": "3.2"
     },
@@ -381,27 +447,39 @@
     },
     {
       "name": "matcher",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/matcher-0.12.17",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/matcher-0.12.19",
       "packageUri": "lib/",
-      "languageVersion": "3.4"
+      "languageVersion": "3.7"
     },
     {
       "name": "material_color_utilities",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/material_color_utilities-0.11.1",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/material_color_utilities-0.13.0",
       "packageUri": "lib/",
-      "languageVersion": "2.17"
+      "languageVersion": "3.5"
     },
     {
       "name": "meta",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/meta-1.16.0",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/meta-1.18.0",
       "packageUri": "lib/",
-      "languageVersion": "2.12"
+      "languageVersion": "3.5"
     },
     {
       "name": "mime",
       "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/mime-2.0.0",
       "packageUri": "lib/",
       "languageVersion": "3.2"
+    },
+    {
+      "name": "objective_c",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/objective_c-9.4.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.10"
+    },
+    {
+      "name": "package_config",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/package_config-2.2.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.4"
     },
     {
       "name": "path",
@@ -411,21 +489,21 @@
     },
     {
       "name": "path_provider",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/path_provider-2.1.5",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/path_provider-2.1.6",
       "packageUri": "lib/",
-      "languageVersion": "3.4"
+      "languageVersion": "3.10"
     },
     {
       "name": "path_provider_android",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/path_provider_android-2.2.17",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/path_provider_android-2.3.1",
       "packageUri": "lib/",
-      "languageVersion": "3.6"
+      "languageVersion": "3.9"
     },
     {
       "name": "path_provider_foundation",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/path_provider_foundation-2.4.1",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/path_provider_foundation-2.6.0",
       "packageUri": "lib/",
-      "languageVersion": "3.3"
+      "languageVersion": "3.10"
     },
     {
       "name": "path_provider_linux",
@@ -435,9 +513,9 @@
     },
     {
       "name": "path_provider_platform_interface",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/path_provider_platform_interface-2.1.2",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/path_provider_platform_interface-2.1.3",
       "packageUri": "lib/",
-      "languageVersion": "3.0"
+      "languageVersion": "3.10"
     },
     {
       "name": "path_provider_windows",
@@ -447,7 +525,7 @@
     },
     {
       "name": "permission_handler",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/permission_handler-12.0.0+1",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/permission_handler-12.0.3",
       "packageUri": "lib/",
       "languageVersion": "3.5"
     },
@@ -459,7 +537,7 @@
     },
     {
       "name": "permission_handler_apple",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/permission_handler_apple-9.4.7",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/permission_handler_apple-9.4.10",
       "packageUri": "lib/",
       "languageVersion": "2.18"
     },
@@ -483,9 +561,9 @@
     },
     {
       "name": "petitparser",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/petitparser-6.1.0",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/petitparser-7.0.2",
       "packageUri": "lib/",
-      "languageVersion": "3.5"
+      "languageVersion": "3.8"
     },
     {
       "name": "platform",
@@ -506,22 +584,34 @@
       "languageVersion": "3.0"
     },
     {
-      "name": "shared_preferences",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/shared_preferences-2.5.3",
+      "name": "pub_semver",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/pub_semver-2.2.0",
       "packageUri": "lib/",
-      "languageVersion": "3.5"
+      "languageVersion": "3.4"
+    },
+    {
+      "name": "record_use",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/record_use-0.6.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.10"
+    },
+    {
+      "name": "shared_preferences",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/shared_preferences-2.5.5",
+      "packageUri": "lib/",
+      "languageVersion": "3.9"
     },
     {
       "name": "shared_preferences_android",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/shared_preferences_android-2.4.10",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/shared_preferences_android-2.4.26",
       "packageUri": "lib/",
-      "languageVersion": "3.6"
+      "languageVersion": "3.12"
     },
     {
       "name": "shared_preferences_foundation",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/shared_preferences_foundation-2.5.4",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/shared_preferences_foundation-2.5.6",
       "packageUri": "lib/",
-      "languageVersion": "3.4"
+      "languageVersion": "3.9"
     },
     {
       "name": "shared_preferences_linux",
@@ -531,9 +621,9 @@
     },
     {
       "name": "shared_preferences_platform_interface",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/shared_preferences_platform_interface-2.4.1",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/shared_preferences_platform_interface-2.4.2",
       "packageUri": "lib/",
-      "languageVersion": "3.2"
+      "languageVersion": "3.9"
     },
     {
       "name": "shared_preferences_web",
@@ -549,9 +639,9 @@
     },
     {
       "name": "sky_engine",
-      "rootUri": "file:///E:/Projects/flutter/flutter/bin/cache/pkg/sky_engine",
+      "rootUri": "file:///C:/flutter/bin/cache/pkg/sky_engine",
       "packageUri": "lib/",
-      "languageVersion": "3.7"
+      "languageVersion": "3.10"
     },
     {
       "name": "socket_io_client",
@@ -567,15 +657,9 @@
     },
     {
       "name": "source_span",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/source_span-1.10.1",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/source_span-1.10.2",
       "packageUri": "lib/",
       "languageVersion": "3.1"
-    },
-    {
-      "name": "sprintf",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/sprintf-7.0.0",
-      "packageUri": "lib/",
-      "languageVersion": "2.12"
     },
     {
       "name": "stack_trace",
@@ -603,9 +687,9 @@
     },
     {
       "name": "test_api",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/test_api-0.7.4",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/test_api-0.7.11",
       "packageUri": "lib/",
-      "languageVersion": "3.5"
+      "languageVersion": "3.7"
     },
     {
       "name": "timezone",
@@ -621,21 +705,21 @@
     },
     {
       "name": "uuid",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/uuid-4.5.1",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/uuid-4.5.3",
       "packageUri": "lib/",
       "languageVersion": "3.0"
     },
     {
       "name": "vector_math",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/vector_math-2.1.4",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/vector_math-2.2.0",
       "packageUri": "lib/",
-      "languageVersion": "2.14"
+      "languageVersion": "3.1"
     },
     {
       "name": "vm_service",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/vm_service-15.0.0",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/vm_service-15.2.0",
       "packageUri": "lib/",
-      "languageVersion": "3.3"
+      "languageVersion": "3.5"
     },
     {
       "name": "web",
@@ -651,9 +735,9 @@
     },
     {
       "name": "xml",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/xml-6.5.0",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/xml-6.6.1",
       "packageUri": "lib/",
-      "languageVersion": "3.2"
+      "languageVersion": "3.8"
     },
     {
       "name": "yaml",
@@ -663,7 +747,7 @@
     },
     {
       "name": "yandex_maps_mapkit",
-      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/yandex_maps_mapkit-4.16.0-beta",
+      "rootUri": "file:///C:/Users/Stray/AppData/Local/Pub/Cache/hosted/pub.dev/yandex_maps_mapkit-4.38.1",
       "packageUri": "lib/",
       "languageVersion": "3.1"
     },
@@ -671,12 +755,12 @@
       "name": "map_routing",
       "rootUri": "../",
       "packageUri": "lib/",
-      "languageVersion": "3.5"
+      "languageVersion": "3.9"
     }
   ],
   "generator": "pub",
-  "generatorVersion": "3.8.1",
-  "flutterRoot": "file:///E:/Projects/flutter/flutter",
-  "flutterVersion": "3.32.2",
+  "generatorVersion": "3.12.2",
+  "flutterRoot": "file:///C:/flutter",
+  "flutterVersion": "3.44.2",
   "pubCache": "file:///C:/Users/Stray/AppData/Local/Pub/Cache"
 }

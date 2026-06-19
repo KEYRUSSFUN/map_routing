@@ -8,12 +8,14 @@ class UserGroupChatAssociation(db.Model):
     joined_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     last_read_at = db.Column(db.DateTime, nullable=True)
     invitation_seen_at = db.Column(db.DateTime, nullable=True)
+    notifications_muted = db.Column(db.Boolean, nullable=False, default=False)
 
 class GroupChat(db.Model):
     __tablename__ = 'group_chat'
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(255), nullable=False)
     creator_id = db.Column(db.Integer, db.ForeignKey('users.id_User'), nullable=True)
+    avatar_filename = db.Column(db.String(255), nullable=True)
 
     creator = db.relationship('User', foreign_keys=[creator_id])
     members = db.relationship('User', secondary='user_group_chat', back_populates="group_chats")

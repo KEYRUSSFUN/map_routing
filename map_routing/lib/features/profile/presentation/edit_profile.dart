@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:map_routing/data/services/user_service.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
 import 'package:map_routing/shared/data/countries.dart';
@@ -80,16 +81,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
         });
       } else {
         setState(() => _isInitialLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось загрузить данные профиля')),
-        );
+        AppSnackBar.show(context, 'Не удалось загрузить данные профиля');
       }
     } catch (e) {
       if (!mounted) return;
       setState(() => _isInitialLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка загрузки: $e')),
-      );
+      AppSnackBar.show(context, 'Ошибка загрузки: $e');
     }
   }
 
@@ -118,11 +115,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         weight <= 0 ||
         age <= 0) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Заполните все обязательные поля корректно'),
-        ),
-      );
+      AppSnackBar.show(context, 'Заполните все обязательные поля корректно');
       setState(() => _isLoading = false);
       return;
     }
@@ -145,12 +138,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
           if (!mounted) return;
 
           if (avatarUrl == null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Профиль сохранён, но не удалось загрузить фото',
-                ),
-              ),
+            AppSnackBar.show(
+              context,
+              'Профиль сохранён, но не удалось загрузить фото',
             );
             Navigator.pop(context);
             return;
@@ -158,20 +148,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
         }
 
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Профиль обновлён')),
-        );
+        AppSnackBar.show(context, 'Профиль обновлён');
         Navigator.pop(context);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ошибка сохранения профиля')),
-        );
+        AppSnackBar.show(context, 'Ошибка сохранения профиля');
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
-      );
+      AppSnackBar.show(context, 'Ошибка: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

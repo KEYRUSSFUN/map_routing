@@ -147,8 +147,8 @@ class _NavItem extends StatelessWidget {
   });
 
   final String label;
-  final IconData icon;
-  final IconData activeIcon;
+  final FaIconData icon;
+  final FaIconData activeIcon;
   final bool isSelected;
   final VoidCallback onTap;
 
