@@ -88,6 +88,34 @@ class GroupChatService {
     }
   }
 
+  Future<Chat> getOrCreateDirectChat(String friendUserId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/group_chats/direct'),
+      headers: {
+        'Authorization': token,
+        'Content-Type': 'application/json',
+      },
+      body: json.encode({'user_id': friendUserId}),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final decoded = json.decode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        return Chat.fromJson(decoded);
+      }
+      throw Exception('Unexpected direct chat response format');
+    }
+
+    String message = 'Failed to open chat';
+    try {
+      final decoded = json.decode(response.body);
+      if (decoded is Map && decoded['error'] != null) {
+        message = decoded['error'].toString();
+      }
+    } catch (_) {}
+    throw Exception(message);
+  }
+
   Future<Map<String, dynamic>> getChatDetails(
     String chatId, {
     bool includeMessages = true,

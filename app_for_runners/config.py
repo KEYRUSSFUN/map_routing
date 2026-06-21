@@ -47,6 +47,11 @@ class Config:
     )
     MAX_AVATAR_SIZE = 5 * 1024 * 1024
     ALLOWED_AVATAR_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
+    COVER_UPLOAD_FOLDER = os.path.join(
+        os.path.dirname(__file__), 'static', 'uploads', 'covers'
+    )
+    MAX_COVER_SIZE = 8 * 1024 * 1024
+    ALLOWED_COVER_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
     ROUTE_SHARE_UPLOAD_FOLDER = os.path.join(
         os.path.dirname(__file__), 'static', 'uploads', 'route_shares'
     )
@@ -74,6 +79,35 @@ class Config:
     )
     MAX_MOMENT_SIZE = 8 * 1024 * 1024
     ALLOWED_MOMENT_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
+    CLUB_AVATAR_UPLOAD_FOLDER = os.path.join(
+        os.path.dirname(__file__), 'static', 'uploads', 'club_avatars'
+    )
+    CLUB_COVER_UPLOAD_FOLDER = os.path.join(
+        os.path.dirname(__file__), 'static', 'uploads', 'club_covers'
+    )
+    MAX_CLUB_IMAGE_SIZE = 8 * 1024 * 1024
+    ALLOWED_CLUB_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
+    PASSWORD_RESET_CODE_TTL_MINUTES = int(
+        os.environ.get('PASSWORD_RESET_CODE_TTL_MINUTES', '15')
+    )
+    # Для разработки без SMTP: вернуть код в ответе API (в проде держите false).
+    EXPOSE_PASSWORD_RESET_CODE = os.environ.get(
+        'EXPOSE_PASSWORD_RESET_CODE', 'false'
+    ).lower() in ('1', 'true', 'yes')
+
+    # SMTP Яндекс: https://yandex.ru/support/mail/mail-clients.html
+    SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.yandex.ru')
+    SMTP_PORT = int(os.environ.get('SMTP_PORT', '465'))
+    SMTP_USER = os.environ.get('SMTP_USER', '').strip()
+    SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '').strip()
+    MAIL_FROM = os.environ.get('MAIL_FROM', SMTP_USER).strip()
+    MAIL_FROM_NAME = os.environ.get('MAIL_FROM_NAME', 'StrideTrack').strip()
+    # Для порта 587 — true (STARTTLS). Для 465 — false (SSL).
+    SMTP_USE_STARTTLS = os.environ.get('SMTP_USE_STARTTLS', '').lower() in (
+        '1',
+        'true',
+        'yes',
+    )
 
     # Redis — очередь сообщений Socket.IO для нескольких инстансов API.
     # Пример: redis://redis:6379/0  (Docker) или redis://localhost:6379/0

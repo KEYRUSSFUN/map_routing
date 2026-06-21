@@ -4,6 +4,7 @@ import 'package:map_routing/data/models/workout_activity_type.dart';
 
 abstract final class MapUiColors {
   static const primaryGreen = Color(0xFF00E676);
+  static const routeOrange = Color(0xFFFF9800);
   static const title = Color(0xFF030303);
   static const body = Color(0xFF757575);
   static const cardBg = Color(0xFFF5F5F5);

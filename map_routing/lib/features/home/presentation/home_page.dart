@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:map_routing/core/navigation/open_user_profile.dart';
 import 'package:map_routing/core/widgets/app_bottom_nav_bar.dart';
 import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:map_routing/core/widgets/stride_track_logo.dart';
@@ -7,9 +6,11 @@ import 'package:map_routing/data/models/challenge.dart';
 import 'package:map_routing/data/models/moment.dart';
 import 'package:map_routing/data/models/story.dart';
 import 'package:map_routing/data/services/challenge_service.dart';
+import 'package:map_routing/data/services/club_service.dart';
 import 'package:map_routing/data/services/moment_service.dart';
 import 'package:map_routing/data/services/story_service.dart';
 import 'package:map_routing/features/challenges/presentation/challenge_detail_page.dart';
+import 'package:map_routing/features/clubs/presentation/club_page.dart';
 import 'package:map_routing/features/home/home_page_controller.dart';
 import 'package:map_routing/features/home/presentation/home_ui.dart';
 import 'package:map_routing/features/moments/presentation/moment_comments_sheet.dart';
@@ -35,6 +36,8 @@ class HomePageState extends State<HomePage> {
   bool _loadingStories = false;
   bool _loadingMoments = false;
   bool _loadingChallenges = false;
+
+  static const _storiesRowHeight = 112.0;
 
   @override
   void initState() {
@@ -208,6 +211,27 @@ class HomePageState extends State<HomePage> {
         canDelete: user.isMe,
       );
       if (changed == true) {
+        if (mounted) {
+          setState(() {
+            final index =
+                _storyUsers.indexWhere((u) => u.userId == user.userId);
+            if (index >= 0) {
+              final current = _storyUsers[index];
+              final updated = List<StoryFeedUser>.from(_storyUsers);
+              updated[index] = StoryFeedUser(
+                userId: current.userId,
+                name: current.name,
+                avatarUrl: current.avatarUrl,
+                hasStory: current.hasStory,
+                hasUnviewed: false,
+                isMe: current.isMe,
+                storyCount: current.storyCount,
+                isOnline: current.isOnline,
+              );
+              _storyUsers = updated;
+            }
+          });
+        }
         await _loadStories(force: true);
       }
     } catch (e) {
@@ -233,6 +257,19 @@ class HomePageState extends State<HomePage> {
       if (!mounted) return;
       AppSnackBar.show(context, 'Не удалось поставить лайк');
     }
+  }
+
+  Future<void> _openClubPost(int clubId) async {
+    final service = await ClubService.fromPrefs();
+    if (!mounted || service == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ClubPage(
+          clubService: service,
+          clubId: clubId,
+        ),
+      ),
+    );
   }
 
   Future<void> _openComments(int index) async {
@@ -264,24 +301,40 @@ class HomePageState extends State<HomePage> {
           color: HomeColors.primaryGreen,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(20, 12, 20, bottomPadding),
+            padding: EdgeInsets.only(bottom: bottomPadding),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const StrideTrackLogo(size: 32),
-                const SizedBox(height: 24),
-                _buildStoriesRow(),
-                const SizedBox(height: 28),
-                HomeSectionHeader(
-                  title: 'Активные челенджи',
-                  trailingLabel: 'Все',
-                  onTrailingTap: HomePageController.instance.openProfileChallenges,
+                Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  child: const StrideTrackLogo(size: 32),
                 ),
-                const SizedBox(height: 14),
-                _buildChallengesRow(),
-                const SizedBox(height: 28),
-                const HomeSectionHeader(title: 'Лента'),
-                const SizedBox(height: 14),
+                HomeSectionPanel(
+                  backgroundColor: const Color.fromARGB(255, 255, 255, 255),
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
+                  showBottomDivider: true,
+                  child: _buildStoriesRow(),
+                ),
+                HomeSectionPanel(
+                  backgroundColor: HomeColors.challengesSectionBg,
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+                  showBottomDivider: true,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      HomeSectionHeader(
+                        title: 'Активные челенджи',
+                        trailingLabel: 'Все',
+                        onTrailingTap:
+                            HomePageController.instance.openProfileChallenges,
+                      ),
+                      const SizedBox(height: 14),
+                      _buildChallengesRow(),
+                    ],
+                  ),
+                ),
+
                 _buildMomentsFeed(),
               ],
             ),
@@ -294,16 +347,16 @@ class HomePageState extends State<HomePage> {
   Widget _buildMomentsFeed() {
     if (_loadingMoments && _feedMoments.isEmpty) {
       return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
+        padding: EdgeInsets.symmetric(vertical: 32),
         child: Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_feedMoments.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         child: Text(
-          'Лента пуста. Опубликуйте момент в профиле — друзья увидят его здесь.',
+          'Лента пуста. Опубликуйте момент в профиле или запись в клубе — они появятся здесь.',
           textAlign: TextAlign.center,
           style: homeSubtitleStyle(),
         ),
@@ -315,8 +368,12 @@ class HomePageState extends State<HomePage> {
         for (var i = 0; i < _feedMoments.length; i++)
           MomentFeedCard(
             moment: _feedMoments[i],
+            edgeToEdge: true,
             onLikeTap: () => _toggleLike(i),
             onCommentTap: () => _openComments(i),
+            onClubTap: _feedMoments[i].clubId == null
+                ? null
+                : () => _openClubPost(_feedMoments[i].clubId!),
           ),
       ],
     );
@@ -347,6 +404,7 @@ class HomePageState extends State<HomePage> {
       height: 168,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
         itemCount: _activeChallenges.length,
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, index) {
@@ -365,15 +423,19 @@ class HomePageState extends State<HomePage> {
 
   Widget _buildStoriesRow() {
     if (_loadingStories && _storyUsers.isEmpty) {
-      return const SizedBox(
-        height: 92,
-        child: Center(child: CircularProgressIndicator()),
+      return SizedBox(
+        height: _storiesRowHeight,
+        child: const Center(child: CircularProgressIndicator()),
       );
     }
 
-    if (_storyUsers.isEmpty) {
+    final storyUsers = _storyUsers
+        .where((user) => user.isMe || user.hasStory)
+        .toList(growable: false);
+
+    if (storyUsers.isEmpty) {
       return SizedBox(
-        height: 92,
+        height: _storiesRowHeight,
         child: Center(
           child: HomeStoryAvatar(
             label: 'Вы',
@@ -388,15 +450,16 @@ class HomePageState extends State<HomePage> {
     }
 
     return SizedBox(
-      height: 92,
+      height: _storiesRowHeight,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: _storyUsers.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        clipBehavior: Clip.none,
+        itemCount: storyUsers.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 14),
         itemBuilder: (context, index) {
-          final user = _storyUsers[index];
+          final user = storyUsers[index];
           final friendIndex =
-              _storyUsers.take(index).where((u) => !u.isMe).length;
+              storyUsers.take(index).where((u) => !u.isMe).length;
           return Center(
             child: HomeStoryAvatar(
               label: user.isMe ? 'Вы' : user.name,
@@ -405,14 +468,11 @@ class HomePageState extends State<HomePage> {
                   ? HomeColors.primaryGreen
                   : HomeStoryAvatar.colorForFriend(friendIndex),
               avatarUrl: user.avatarUrl,
-              hasStoryRing: user.hasStory,
+              hasStoryRing: user.hasUnviewed,
               showAddBadge: user.isMe,
               isOnline: user.isOnline,
               onTap: () => _openUserStories(user),
               onAddTap: _openPublishDialog,
-              onAvatarTap: user.isMe
-                  ? null
-                  : () => openUserProfile(context, user.userId),
             ),
           );
         },

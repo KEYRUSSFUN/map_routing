@@ -5,9 +5,10 @@ from flask import Blueprint, jsonify
 from sqlalchemy import func
 
 from extensions import db
-from models import Challenge, ChallengeParticipant, Friendship, UserInfo, UserStatistic
+from models import Challenge, ChallengeParticipant, Friendship, Route, UserInfo, UserStatistic
 from utils.auth import token_required
 from utils.user_avatar import avatar_url_for
+from utils.statistics_helper import route_activity_date
 
 challenges_bp = Blueprint('challenges', __name__)
 _default_challenges_ready = False
@@ -25,13 +26,39 @@ def _metric_field(metric_type):
     return 'steps' if metric_type == 'steps' else 'distance'
 
 
-def _progress_for_user(challenge, user_id, joined_at=None):
-    metric = _metric_field(challenge.metric_type)
+_CHALLENGE_ACTIVITY_TYPES = {
+    'running': frozenset({'run', 'trail'}),
+    'cycling': frozenset({'bike'}),
+    'roller': frozenset({'roller'}),
+}
+
+
+def _normalized_route_activity(route):
+    raw = (route.activity_type or 'run').strip().lower()
+    return raw or 'run'
+
+
+def _route_counts_for_challenge(route, challenge):
+    if challenge.metric_type == 'steps':
+        return True
+    allowed = _CHALLENGE_ACTIVITY_TYPES.get(challenge.icon_key)
+    if allowed is None:
+        return True
+    return _normalized_route_activity(route) in allowed
+
+
+def _effective_start(challenge, joined_at=None):
     start = challenge.start_date
     if joined_at is not None:
         joined_date = joined_at.astimezone(timezone.utc).date()
         if joined_date > start:
             start = joined_date
+    return start
+
+
+def _stats_progress_for_user(challenge, user_id, joined_at=None):
+    metric = _metric_field(challenge.metric_type)
+    start = _effective_start(challenge, joined_at)
     end = min(challenge.end_date, _today())
     if end < start:
         return 0.0
@@ -51,7 +78,31 @@ def _progress_for_user(challenge, user_id, joined_at=None):
     return total
 
 
-def _bulk_progress(challenge, participants):
+def _distance_progress_for_user(challenge, user_id, joined_at=None):
+    start = _effective_start(challenge, joined_at)
+    end = min(challenge.end_date, _today())
+    if end < start:
+        return 0.0
+
+    routes = Route.query.filter_by(id_User=user_id).all()
+    total_m = 0.0
+    for route in routes:
+        if not _route_counts_for_challenge(route, challenge):
+            continue
+        route_date = route_activity_date(route)
+        if route_date is None or route_date < start or route_date > end:
+            continue
+        total_m += float(route.distance or 0)
+    return total_m / 1000.0
+
+
+def _progress_for_user(challenge, user_id, joined_at=None):
+    if challenge.metric_type == 'steps':
+        return _stats_progress_for_user(challenge, user_id, joined_at)
+    return _distance_progress_for_user(challenge, user_id, joined_at)
+
+
+def _bulk_stats_progress(challenge, participants):
     if not participants:
         return {}
 
@@ -72,11 +123,7 @@ def _bulk_progress(challenge, participants):
 
     progress = {}
     for participant in participants:
-        start = challenge.start_date
-        if participant.joined_at is not None:
-            joined_date = participant.joined_at.astimezone(timezone.utc).date()
-            if joined_date > start:
-                start = joined_date
+        start = _effective_start(challenge, participant.joined_at)
         if end < start:
             progress[participant.id_User] = 0.0
             continue
@@ -89,6 +136,45 @@ def _bulk_progress(challenge, participants):
             total /= 1000.0
         progress[participant.id_User] = total
     return progress
+
+
+def _bulk_distance_progress(challenge, participants):
+    if not participants:
+        return {}
+
+    end = min(challenge.end_date, _today())
+    user_ids = [participant.id_User for participant in participants]
+    if end < challenge.start_date:
+        return {user_id: 0.0 for user_id in user_ids}
+
+    routes = Route.query.filter(Route.id_User.in_(user_ids)).all()
+    routes_by_user = {}
+    for route in routes:
+        routes_by_user.setdefault(route.id_User, []).append(route)
+
+    progress = {}
+    for participant in participants:
+        start = _effective_start(challenge, participant.joined_at)
+        if end < start:
+            progress[participant.id_User] = 0.0
+            continue
+
+        total_m = 0.0
+        for route in routes_by_user.get(participant.id_User, []):
+            if not _route_counts_for_challenge(route, challenge):
+                continue
+            route_date = route_activity_date(route)
+            if route_date is None or route_date < start or route_date > end:
+                continue
+            total_m += float(route.distance or 0)
+        progress[participant.id_User] = total_m / 1000.0
+    return progress
+
+
+def _bulk_progress(challenge, participants):
+    if challenge.metric_type == 'steps':
+        return _bulk_stats_progress(challenge, participants)
+    return _bulk_distance_progress(challenge, participants)
 
 
 def _participant_counts(challenge_ids):

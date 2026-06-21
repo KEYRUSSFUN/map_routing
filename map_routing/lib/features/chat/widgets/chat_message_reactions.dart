@@ -36,7 +36,8 @@ class ChatMessageReactions extends StatelessWidget {
         children: _grouped.entries.map((entry) {
           final emoji = entry.key;
           final users = entry.value;
-          final reactedByMe = currentUserId != null &&
+          final reactedByMe =
+              currentUserId != null &&
               users.any((user) => user['user_id']?.toString() == currentUserId);
 
           return InkWell(

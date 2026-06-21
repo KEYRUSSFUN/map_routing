@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 import 'package:common/listeners/map_input_listener.dart';
 import 'package:common/map/flutter_map_widget.dart';
 import 'package:map_routing/core/map/mapkit_bootstrap.dart';
+import 'package:map_routing/core/widgets/app_confirm_dialog.dart';
 import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:flutter/material.dart' hide Animation;
 import 'package:map_routing/data/activity_calculator.dart';
@@ -22,8 +23,10 @@ import 'package:map_routing/features/map/presentation/map_ui_styles.dart';
 import 'package:map_routing/features/map/presentation/save_workout_page.dart';
 import 'package:map_routing/features/map/presentation/widgets/map_idle_overlay.dart';
 import 'package:map_routing/features/map/presentation/widgets/map_location_marker_icon.dart';
+import 'package:map_routing/features/map/presentation/widgets/map_route_marker_icons.dart';
 import 'package:map_routing/features/map/presentation/widgets/map_workout_overlay.dart';
 import 'package:map_routing/features/map/presentation/widgets/workout_metrics_sheet.dart';
+import 'package:map_routing/features/map/services/workout_location_settings.dart';
 import 'package:map_routing/shared/utils/polyline_extensions.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:yandex_maps_mapkit/image.dart' as image_provider;
@@ -75,7 +78,11 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   var _currentRoutingType = RoutingType.pedestrian;
 
   PlacemarkMapObject? _currentLocationPlacemark;
+  PlacemarkMapObject? _routeStartPlacemark;
+  PlacemarkMapObject? _routeFinishPlacemark;
   image_provider.ImageProvider? _locationMarkerProvider;
+  image_provider.ImageProvider? _startPointMarkerProvider;
+  image_provider.ImageProvider? _finishPointMarkerProvider;
 
   bool _isTracking = false;
   bool _isMinimized = false;
@@ -128,6 +135,7 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   static const _workoutStartThresholdM = 35.0;
   static const _workoutCompleteProgress = 0.995;
   bool _workoutAutoFinishing = false;
+  double? _lastAcceptedProjectedMeters;
 
   late PedestrianRouter _pedestrianRouter;
   late MasstransitRouter _publicTransportRouter;
@@ -185,6 +193,65 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   late final finishPointImageProvider =
       image_provider.ImageProvider.fromImageProvider(
           const AssetImage('assets/ic_finish_point.png'));
+
+  image_provider.ImageProvider _resolveStartMarkerProvider() =>
+      _startPointMarkerProvider ?? pointImageProvider;
+
+  image_provider.ImageProvider _resolveFinishMarkerProvider() =>
+      _finishPointMarkerProvider ?? finishPointImageProvider;
+
+  void _clearRouteEndpointMarkers() {
+    final collection = _placemarksCollection;
+    if (_routeStartPlacemark != null) {
+      try {
+        collection?.remove(_routeStartPlacemark!);
+      } catch (_) {}
+      _routeStartPlacemark = null;
+    }
+    if (_routeFinishPlacemark != null) {
+      try {
+        collection?.remove(_routeFinishPlacemark!);
+      } catch (_) {}
+      _routeFinishPlacemark = null;
+    }
+  }
+
+  void _discardRouteEndpointMarkers() {
+    _routeStartPlacemark = null;
+    _routeFinishPlacemark = null;
+  }
+
+  void _setRouteEndpointMarkers({Point? start, Point? finish}) {
+    _clearRouteEndpointMarkers();
+    if (_hideMapEndpoints) return;
+
+    final collection = _placemarksCollection;
+    if (collection == null) return;
+
+    if (start != null) {
+      _routeStartPlacemark = collection.addPlacemark()..geometry = start;
+      _routeStartPlacemark!
+        ..setIcon(_resolveStartMarkerProvider())
+        ..setIconStyle(
+          const IconStyle(
+            scale: MapRouteMarkerIcons.startIconScale,
+            zIndex: 120,
+          ),
+        );
+    }
+
+    if (finish != null) {
+      _routeFinishPlacemark = collection.addPlacemark()..geometry = finish;
+      _routeFinishPlacemark!
+        ..setIcon(_resolveFinishMarkerProvider())
+        ..setIconStyle(
+          const IconStyle(
+            scale: MapRouteMarkerIcons.finishIconScale,
+            zIndex: 120,
+          ),
+        );
+    }
+  }
 
   late final _inputListener = MapInputListenerImpl(
     onMapTapCallback: (_, __) {},
@@ -245,6 +312,7 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     unawaited(_ensureRoutersReady());
     unawaited(_loadUserProfile());
     _loadLocationMarkerIcon();
+    _loadRouteMarkerIcons();
     if (widget.isTabActive) {
       _onTabBecameActive();
     }
@@ -339,6 +407,23 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
     if (_isMapReady && _lastKnownPoint != null) {
       _updateCurrentLocationMarker(_lastKnownPoint!, _lastKnownHeading);
+    }
+  }
+
+  Future<void> _loadRouteMarkerIcons() async {
+    final results = await Future.wait([
+      MapRouteMarkerIcons.startPointPng(),
+      MapRouteMarkerIcons.finishPointPng(),
+    ]);
+    if (!mounted) return;
+
+    _startPointMarkerProvider =
+        image_provider.ImageProvider.fromImageProvider(MemoryImage(results[0]));
+    _finishPointMarkerProvider =
+        image_provider.ImageProvider.fromImageProvider(MemoryImage(results[1]));
+
+    if (_isMapReady) {
+      _onRouteParametersUpdated();
     }
   }
 
@@ -725,6 +810,7 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _maxSpeedMs = 0;
     _currentSpeedMs = 0;
     _gpsTrackProcessor.reset();
+    _lastAcceptedProjectedMeters = null;
   }
 
   void _notifyWorkoutUi() {
@@ -850,28 +936,18 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     final percentLabel =
         percent >= 10 ? '${percent.round()}' : percent.toStringAsFixed(1);
 
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Тренировка не завершена'),
-        content: Text(
+    final result = await AppConfirmDialog.show(
+      context,
+      title: 'Тренировка не завершена',
+      message:
           'Вы прошли $percentLabel% маршрута.\n\n'
           'Вы не закончили тренировку. Сохранить результат?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Продолжить'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Сохранить'),
-          ),
-        ],
-      ),
+      cancelLabel: 'Продолжить',
+      confirmLabel: 'Сохранить',
+      icon: Icons.flag_outlined,
     );
 
-    return result ?? false;
+    return result;
   }
 
   Future<void> _onStopWorkoutPressed() async {
@@ -943,7 +1019,7 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _startLocationUpdates() async {
+  Future<void> _startLocationUpdates({bool refreshCurrentPosition = true}) async {
     final permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
@@ -955,31 +1031,57 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       }
     }
 
-    _positionStream?.cancel();
-
-    try {
-      final position = await Geolocator.getCurrentPosition();
-      if (mounted) {
-        _lastKnownPoint = Point(
-          latitude: position.latitude,
-          longitude: position.longitude,
-        );
-        _lastKnownHeading = position.heading;
-        if (_isMapReady) {
-          _updateCurrentLocationMarker(_lastKnownPoint!, _lastKnownHeading);
+    if (_isTracking) {
+      final workoutPermission =
+          await WorkoutLocationSettings.ensureWorkoutPermission();
+      if (!workoutPermission) {
+        if (mounted) {
+          AppSnackBar.show(
+            context,
+            'Для тренировки с выключенным экраном разрешите доступ к геолокации',
+          );
         }
-        _tryInitialCameraFocus();
       }
-    } catch (_) {}
+    }
+
+    await _restartLocationStream(refreshCurrentPosition: refreshCurrentPosition);
+  }
+
+  LocationSettings get _locationSettings => _isTracking
+      ? WorkoutLocationSettings.forTracking()
+      : WorkoutLocationSettings.forIdle();
+
+  Future<void> _restartLocationStream({
+    required bool refreshCurrentPosition,
+  }) async {
+    _positionStream?.cancel();
+    _positionStream = null;
+
+    if (refreshCurrentPosition) {
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          locationSettings: _locationSettings,
+        );
+        if (mounted) {
+          _lastKnownPoint = Point(
+            latitude: position.latitude,
+            longitude: position.longitude,
+          );
+          _lastKnownHeading = position.heading;
+          if (_isMapReady) {
+            _updateCurrentLocationMarker(_lastKnownPoint!, _lastKnownHeading);
+          }
+          _tryInitialCameraFocus();
+        }
+      } catch (_) {}
+    }
 
     _positionStream = Geolocator.getPositionStream(
-      locationSettings: LocationSettings(
-        accuracy: _isTracking
-            ? LocationAccuracy.bestForNavigation
-            : LocationAccuracy.high,
-        distanceFilter: _isTracking ? 5 : 8,
-      ),
-    ).listen((position) {
+      locationSettings: _locationSettings,
+    ).listen(_handlePositionUpdate);
+  }
+
+  void _handlePositionUpdate(Position position) {
       final point =
           Point(latitude: position.latitude, longitude: position.longitude);
       _lastKnownPoint = point;
@@ -1077,18 +1179,19 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         }
       }
 
-      final acceptResult = _isWorkoutMetricsActive
-          ? _gpsTrackProcessor.accept(
+      final acceptResults = _isWorkoutMetricsActive
+          ? _gpsTrackProcessor.acceptTrackPoints(
               position: position,
               routeSnap: routeSnap,
               preferRouteSnap: _isGuidedWorkout,
+              routeGapPoints: _routeGapPointsForPosition(routeSnap),
             )
-          : null;
+          : const <GpsTrackAcceptResult>[];
       final progressSnapshot = guidedProgress;
 
-      if (acceptResult != null || progressSnapshot != null) {
+      if (acceptResults.isNotEmpty || progressSnapshot != null) {
         _mutateState(() {
-          if (acceptResult != null) {
+          for (final acceptResult in acceptResults) {
             _totalDistance += acceptResult.addedDistanceM;
             _trackedRoutePoints.add(acceptResult.trackPoint);
           }
@@ -1097,10 +1200,13 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             _guidedRemainingM = progressSnapshot.remainingMeters;
             _guidedProgress = progressSnapshot.progress;
             _isOffRoute = progressSnapshot.isOffRoute;
+            if (routeSnap != null && !routeSnap.isOffRoute) {
+              _lastAcceptedProjectedMeters = routeSnap.projectedMeters;
+            }
           }
         });
 
-        if (acceptResult != null) {
+        if (acceptResults.isNotEmpty) {
           _redrawWorkoutRoutes();
         }
       }
@@ -1113,8 +1219,8 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         );
       }
 
-      if (acceptResult != null && _isMapReady && !_isMinimized) {
-        final trackedPoint = acceptResult.trackPoint;
+      if (acceptResults.isNotEmpty && _isMapReady && !_isMinimized) {
+        final trackedPoint = acceptResults.last.trackPoint;
         _mapWindow!.map.move(
           CameraPosition(
             Point(
@@ -1127,7 +1233,22 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           ),
         );
       }
-    });
+  }
+
+  List<Point>? _routeGapPointsForPosition(PathSnapResult? routeSnap) {
+    if (!_isGuidedWorkout ||
+        _routeProgressTracker == null ||
+        routeSnap == null ||
+        routeSnap.isOffRoute ||
+        _lastAcceptedProjectedMeters == null) {
+      return null;
+    }
+
+    final from = _lastAcceptedProjectedMeters!;
+    final to = routeSnap.projectedMeters;
+    if (to <= from + 5) return null;
+
+    return _routeProgressTracker!.collectPathPointsBetween(from, to);
   }
 
   void _updateCurrentLocationMarker(Point point, double? heading) {
@@ -1148,9 +1269,8 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _currentLocationPlacemark!
       ..setIcon(markerIcon)
       ..setIconStyle(const IconStyle(
-        scale: 0.14,
+        scale: MapLocationMarkerIcon.mapScale,
         rotationType: RotationType.Rotate,
-        anchor: math.Point(0.5, 0.5),
         zIndex: 100,
       ));
     _currentLocationPlacemark!.visible = true;
@@ -1351,6 +1471,28 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           .toList(),
     );
     routes.addPolylineWithGeometry(tracked).applyTrackedWorkoutPathStyle();
+
+    if (_trackedRoutePoints.isNotEmpty) {
+      final first = _trackedRoutePoints.first;
+      final start = Point(
+        latitude: first.latitude,
+        longitude: first.longitude,
+      );
+      Point? finish;
+      if (_isGuidedWorkout &&
+          _routeProgressTracker != null &&
+          _routeProgressTracker!.pathPoints.isNotEmpty) {
+        finish = _routeProgressTracker!.pathPoints.last;
+      } else if (_trackedRoutePoints.length >= 2) {
+        final last = _trackedRoutePoints.last;
+        finish = Point(
+          latitude: last.latitude,
+          longitude: last.longitude,
+        );
+      }
+      _setRouteEndpointMarkers(start: start, finish: finish);
+    }
+
     _scheduleMapRefresh();
   }
 
@@ -1358,7 +1500,6 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   void _startTracking() {
     _sensorPauseTimer?.cancel();
-    _ensureLocationActive();
     if (_routePoints.isEmpty) {
       AppSnackBar.show(context, 'Поставьте точку на карте');
       return;
@@ -1424,8 +1565,16 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     });
 
     _gpsTrackProcessor.reset();
+    _lastAcceptedProjectedMeters = null;
     if (_sensorsActive) {
-      _startLocationUpdates();
+      unawaited(
+        _restartLocationStream(refreshCurrentPosition: false),
+      );
+    } else {
+      _sensorsActive = true;
+      unawaited(
+        _startLocationUpdates(refreshCurrentPosition: false),
+      );
     }
 
     if (!reachedStart) {
@@ -1464,13 +1613,19 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     }
     if (_isTracking) {
       _redrawWorkoutRoutes();
+      if (_sensorsActive) {
+        unawaited(
+          _restartLocationStream(refreshCurrentPosition: false),
+        );
+      }
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    final wasForeground = _appInForeground;
     _appInForeground = state == AppLifecycleState.resumed;
-    if (_appInForeground) {
+    if (!wasForeground && _appInForeground) {
       handleAppLifecycleResume();
     }
   }
@@ -1513,7 +1668,14 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     });
     _clearApproachRoute();
     _notifyWorkoutUi();
-    _syncSensorsState();
+    _lastAcceptedProjectedMeters = null;
+    if (_sensorsActive) {
+      unawaited(
+        _restartLocationStream(refreshCurrentPosition: false),
+      );
+    } else {
+      _syncSensorsState();
+    }
 
     if (session.points.length < 2) {
       setState(() {
@@ -1629,13 +1791,20 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     final routes = _routesCollection;
     if (placemarks == null || routes == null) return;
 
+    if (_isTracking) {
+      _redrawWorkoutRoutes();
+      _scheduleMapRefresh();
+      return;
+    }
+
     _pedestrianSession?.cancel();
     _publicTransportSession?.cancel();
     _pedestrianSession = null;
     _publicTransportSession = null;
 
+    _discardRouteEndpointMarkers();
     placemarks.clear();
-    if (!_isTracking) routes.clear();
+    routes.clear();
 
     if (_routePoints.isEmpty) {
       _scheduleMapRefresh();
@@ -1645,17 +1814,10 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     if (_savedRouteTrackPoints != null &&
         _savedRouteTrackPoints!.length >= 2 &&
         !_isTracking) {
-      if (!_hideMapEndpoints) {
-        final start = placemarks.addPlacemark()
-          ..geometry = _savedRouteTrackPoints!.first;
-        start.setIcon(pointImageProvider);
-        start.setIconStyle(const IconStyle(scale: 1.0, zIndex: 20.0));
-
-        final finish = placemarks.addPlacemark()
-          ..geometry = _savedRouteTrackPoints!.last;
-        finish.setIcon(finishPointImageProvider);
-        finish.setIconStyle(const IconStyle(scale: 1.5, zIndex: 20.0));
-      }
+      _setRouteEndpointMarkers(
+        start: _savedRouteTrackPoints!.first,
+        finish: _savedRouteTrackPoints!.last,
+      );
 
       routes
           .addPolylineWithGeometry(Polyline(_savedRouteTrackPoints!))
@@ -1668,18 +1830,25 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       final isFinish =
           _routePoints.length == 1 || index == _routePoints.length - 1;
       final isStart = index == 0;
-      if (_hideMapEndpoints && (isStart || isFinish)) {
-        return;
-      }
+      if (isStart || isFinish) return;
+      if (_hideMapEndpoints) return;
+
       final placemark = placemarks.addPlacemark()..geometry = point;
-      placemark.setIcon(
-        isFinish ? finishPointImageProvider : pointImageProvider,
+      placemark.setIcon(_resolveStartMarkerProvider());
+      placemark.setIconStyle(
+        const IconStyle(
+          scale: MapRouteMarkerIcons.startIconScale * 0.7,
+          zIndex: 18,
+        ),
       );
-      placemark.setIconStyle(IconStyle(
-        scale: isFinish ? 1.5 : 1.0,
-        zIndex: 20.0,
-      ));
     });
+
+    if (_routePoints.length >= 1) {
+      _setRouteEndpointMarkers(
+        start: _routePoints.first,
+        finish: _routePoints.length >= 2 ? _routePoints.last : null,
+      );
+    }
 
     final points = _buildRoutingRequestPoints();
     if (points == null) {
@@ -1723,6 +1892,12 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     for (var i = 0; i < _pedestrianRoutes.length; i++) {
       _createPolylineWithStyle(i, _pedestrianRoutes[i].geometry);
     }
+    if (_pedestrianRoutes.isNotEmpty) {
+      final points = _pedestrianRoutes.first.geometry.points;
+      if (points.length >= 2) {
+        _setRouteEndpointMarkers(start: points.first, finish: points.last);
+      }
+    }
     _scheduleMapRefresh();
   }
 
@@ -1731,6 +1906,12 @@ class MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _routesCollection!.clear();
     for (var i = 0; i < _publicTransportRoutes.length; i++) {
       _createPolylineWithStyle(i, _publicTransportRoutes[i].geometry);
+    }
+    if (_publicTransportRoutes.isNotEmpty) {
+      final points = _publicTransportRoutes.first.geometry.points;
+      if (points.length >= 2) {
+        _setRouteEndpointMarkers(start: points.first, finish: points.last);
+      }
     }
     _scheduleMapRefresh();
   }

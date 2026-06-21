@@ -11,6 +11,10 @@ class MomentItem {
     this.avatarUrl,
     this.text,
     this.photoUrl,
+    this.clubId,
+    this.clubTitle,
+    this.clubAvatarUrl,
+    this.isClubPost = false,
   });
 
   final int id;
@@ -24,24 +28,35 @@ class MomentItem {
   final int commentsCount;
   final bool likedByMe;
   final bool isMe;
+  final int? clubId;
+  final String? clubTitle;
+  final String? clubAvatarUrl;
+  final bool isClubPost;
 
   MomentItem copyWith({
     int? likesCount,
     int? commentsCount,
     bool? likedByMe,
+    String? text,
+    String? photoUrl,
+    bool clearPhoto = false,
   }) {
     return MomentItem(
       id: id,
       userId: userId,
       userName: userName,
       avatarUrl: avatarUrl,
-      text: text,
-      photoUrl: photoUrl,
+      text: text ?? this.text,
+      photoUrl: clearPhoto ? null : (photoUrl ?? this.photoUrl),
       createdAt: createdAt,
       likesCount: likesCount ?? this.likesCount,
       commentsCount: commentsCount ?? this.commentsCount,
       likedByMe: likedByMe ?? this.likedByMe,
       isMe: isMe,
+      clubId: clubId,
+      clubTitle: clubTitle,
+      clubAvatarUrl: clubAvatarUrl,
+      isClubPost: isClubPost,
     );
   }
 
@@ -58,6 +73,10 @@ class MomentItem {
       commentsCount: (json['comments_count'] as num?)?.toInt() ?? 0,
       likedByMe: json['liked_by_me'] == true,
       isMe: json['is_me'] == true,
+      clubId: (json['club_id'] as num?)?.toInt(),
+      clubTitle: json['club_title']?.toString(),
+      clubAvatarUrl: json['club_avatar_url']?.toString(),
+      isClubPost: json['is_club_post'] == true || json['club_id'] != null,
     );
   }
 }

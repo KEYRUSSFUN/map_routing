@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +6,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:map_routing/core/navigation/open_user_profile.dart';
 import 'package:map_routing/core/network/config.dart';
+import 'package:map_routing/core/widgets/app_confirm_dialog.dart';
 import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:map_routing/core/network/backend_urls.dart';
 import 'package:map_routing/core/widgets/user_avatar.dart';
@@ -27,6 +28,7 @@ import 'package:map_routing/features/chat/widgets/chat_participants_sheet.dart';
 import 'package:map_routing/features/chat/widgets/chat_settings_sheet.dart';
 import 'package:map_routing/features/chat/widgets/chat_message_reactions.dart';
 import 'package:map_routing/features/chat/widgets/chat_route_message_bubble.dart';
+import 'package:map_routing/features/chat/utils/chat_message_status.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final RouteObserver<PageRoute> chatRouteObserver = RouteObserver<PageRoute>();
@@ -47,7 +49,8 @@ class ChatScreen extends StatefulWidget {
     String? title,
     String? photoUrl,
     bool? notificationsMuted,
-  })? onChatMetadataChanged;
+  })?
+  onChatMetadataChanged;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -64,6 +67,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
   late final void Function(dynamic) _onChatDeleted;
   late final void Function(dynamic) _onChatUpdated;
   late final void Function(dynamic) _onUserTyping;
+  late final void Function(dynamic) _onMemberStateUpdated;
 
   String? _token;
   String? _currentUserId;
@@ -99,6 +103,8 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
   final Map<String, Timer> _typingExpireTimers = {};
   Timer? _typingPulseTimer;
   bool _typingSignalActive = false;
+  final Map<String, DateTime?> _memberReadAt = {};
+  final Map<String, DateTime?> _memberReceivedAt = {};
 
   @override
   void initState() {
@@ -125,6 +131,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
         routeShare: data['route_share'],
         reactions: data['reactions'],
         senderAvatarUrl: data['sender_avatar_url'],
+        status: data['status'],
       );
 
       setState(() {
@@ -133,17 +140,28 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
           _messages.removeWhere((m) => m['id']?.toString() == idStr);
         }
         if (senderId == _currentUserId) {
-          _messages.removeWhere((m) =>
-              m['sender_id'] == _currentUserId &&
-              m['id'] == null &&
-              m['content'] == incoming['content']);
+          _messages.removeWhere(
+            (m) =>
+                m['sender_id'] == _currentUserId &&
+                m['id'] == null &&
+                m['content'] == incoming['content'],
+          );
         }
         _messages.insert(0, incoming);
+        if (senderId == _currentUserId) {
+          _refreshOwnMessageStatuses();
+        }
         _removeTypingUser(senderId);
       });
       _schedulePersistMessages();
 
       if (senderId != _currentUserId) {
+        unawaited(
+          _socketService.acknowledgeMessageDelivery(
+            chatId: widget.chatId,
+            messageId: messageId?.toString(),
+          ),
+        );
         _scheduleMarkChatAsRead();
       }
     };
@@ -159,10 +177,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
       if (chatId != null && chatId != widget.chatId) return;
       final messageId = data['message_id'];
       if (messageId == null) return;
-      _updateMessageReactions(
-        messageId,
-        _parseReactions(data['reactions']),
-      );
+      _updateMessageReactions(messageId, _parseReactions(data['reactions']));
     };
     _onChatDeleted = (data) {
       if (!mounted || _chatDeleted || data is! Map) return;
@@ -194,7 +209,8 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
         if (title != null && title.isNotEmpty) {
           _chatTitle = title;
         }
-        _chatPhotoUrl = absoluteBackendUrl(chatRaw['photoUrl']?.toString()) ??
+        _chatPhotoUrl =
+            absoluteBackendUrl(chatRaw['photoUrl']?.toString()) ??
             _chatPhotoUrl;
         if (chatRaw['notificationsMuted'] == true ||
             chatRaw['notificationsMuted'] == false) {
@@ -226,6 +242,27 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
       final name = data['sender']?.toString().trim();
       if (name == null || name.isEmpty) return;
       _setTypingUser(userId, name);
+    };
+    _onMemberStateUpdated = (raw) {
+      if (!mounted || _chatDeleted || raw is! Map) return;
+      final chatId = raw['chat_id']?.toString();
+      if (chatId != null && chatId != widget.chatId) return;
+
+      final userId = raw['user_id']?.toString();
+      if (userId == null || userId.isEmpty) return;
+
+      final readAt = _parseMemberTimestamp(raw['read_at']);
+      final receivedAt = _parseMemberTimestamp(raw['received_at']);
+
+      setState(() {
+        if (readAt != null) {
+          _memberReadAt[userId] = readAt;
+        }
+        if (receivedAt != null) {
+          _memberReceivedAt[userId] = receivedAt;
+        }
+        _refreshOwnMessageStatuses();
+      });
     };
     _prepareSessionCache();
     _messageController.addListener(_handleComposerChanged);
@@ -309,6 +346,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
     _socketService.off('chat_deleted', _onChatDeleted);
     _socketService.off('chat_updated', _onChatUpdated);
     _socketService.off('user_typing', _onUserTyping);
+    _socketService.off('member_state_updated', _onMemberStateUpdated);
     _stopTypingSignal();
     _clearTypingIndicators();
   }
@@ -500,6 +538,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
     _socketService.off('chat_deleted', _onChatDeleted);
     _socketService.off('chat_updated', _onChatUpdated);
     _socketService.off('user_typing', _onUserTyping);
+    _socketService.off('member_state_updated', _onMemberStateUpdated);
     _stopTypingSignal();
     _clearTypingIndicators();
     _messageController.removeListener(_handleComposerChanged);
@@ -551,7 +590,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
       'сен',
       'окт',
       'ноя',
-      'дек'
+      'дек',
     ];
     return '${dt.day} ${months[dt.month - 1]}';
   }
@@ -567,6 +606,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
     dynamic routeShare,
     dynamic reactions,
     dynamic senderAvatarUrl,
+    dynamic status,
   }) {
     final type = (messageType ?? 'text').toString();
     final text = (content ?? '').toString();
@@ -599,8 +639,10 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
       'timestamp': timestamp?.toString() ?? backendNowIsoUtc(),
       'reply_to_sender': replySender,
       'reply_to_text': replyText,
-      if (routeShare is Map) 'route_share': Map<String, dynamic>.from(routeShare),
+      if (routeShare is Map)
+        'route_share': Map<String, dynamic>.from(routeShare),
       'reactions': _parseReactions(reactions),
+      if (status != null) 'status': status.toString(),
     };
   }
 
@@ -628,9 +670,48 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
             routeShare: m['route_share'],
             reactions: m['reactions'],
             senderAvatarUrl: m['sender_avatar_url'],
+            status: m['status'],
           ),
         )
         .toList();
+  }
+
+  Iterable<String> get _participantIds => _participants
+      .map((participant) => participant.userId)
+      .whereType<String>()
+      .where((id) => id.isNotEmpty);
+
+  DateTime? _parseMemberTimestamp(dynamic raw) {
+    if (raw == null) return null;
+    return DateTime.tryParse(raw.toString())?.toUtc();
+  }
+
+  void _refreshOwnMessageStatuses() {
+    final currentUserId = _currentUserId;
+    if (currentUserId == null) return;
+
+    for (var i = 0; i < _messages.length; i++) {
+      final message = _messages[i];
+      if (message['sender_id']?.toString() != currentUserId) continue;
+      final status = ChatMessageStatusHelper.statusForMessage(
+        message: message,
+        currentUserId: currentUserId,
+        memberReadAt: _memberReadAt,
+        memberReceivedAt: _memberReceivedAt,
+        participantIds: _participantIds,
+      );
+      message['status'] = chatMessageStatusToRaw(status);
+    }
+  }
+
+  ChatMessageStatus _messageStatus(Map<String, dynamic> message) {
+    return ChatMessageStatusHelper.statusForMessage(
+      message: message,
+      currentUserId: _currentUserId,
+      memberReadAt: _memberReadAt,
+      memberReceivedAt: _memberReceivedAt,
+      participantIds: _participantIds,
+    );
   }
 
   List<Map<String, dynamic>> _mergeMessages(
@@ -648,8 +729,9 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
     }
     final list = merged.values.toList();
     list.sort(
-      (a, b) =>
-          _parseTimestamp(b['timestamp']).compareTo(_parseTimestamp(a['timestamp'])),
+      (a, b) => _parseTimestamp(
+        b['timestamp'],
+      ).compareTo(_parseTimestamp(a['timestamp'])),
     );
     return list;
   }
@@ -740,11 +822,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
       notificationsMuted: _notificationsMuted,
       isCreator: _isCreator,
       chatService: GroupChatService(token: _token!),
-      onUpdated: ({
-        String? title,
-        String? photoUrl,
-        bool? notificationsMuted,
-      }) {
+      onUpdated: ({String? title, String? photoUrl, bool? notificationsMuted}) {
         if (!mounted) return;
         setState(() {
           if (title != null) _chatTitle = title;
@@ -770,13 +848,9 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
   ) {
     final idStr = messageId.toString();
     setState(() {
-      final index =
-          _messages.indexWhere((m) => m['id']?.toString() == idStr);
+      final index = _messages.indexWhere((m) => m['id']?.toString() == idStr);
       if (index < 0) return;
-      _messages[index] = {
-        ..._messages[index],
-        'reactions': reactions,
-      };
+      _messages[index] = {..._messages[index], 'reactions': reactions};
     });
     _schedulePersistMessages();
   }
@@ -928,6 +1002,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
     _socketService.off('chat_deleted', _onChatDeleted);
     _socketService.off('chat_updated', _onChatUpdated);
     _socketService.off('user_typing', _onUserTyping);
+    _socketService.off('member_state_updated', _onMemberStateUpdated);
 
     _socketService.on('new_message', _onNewMessage);
     _socketService.on('message_deleted', _onMessageDeleted);
@@ -935,6 +1010,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
     _socketService.on('chat_deleted', _onChatDeleted);
     _socketService.on('chat_updated', _onChatUpdated);
     _socketService.on('user_typing', _onUserTyping);
+    _socketService.on('member_state_updated', _onMemberStateUpdated);
 
     unawaited(_socketService.ensureConnected(backendBaseUrl));
     _socketService.joinChat(widget.chatId, force: true);
@@ -944,10 +1020,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
     try {
       _bindSocketHandlers();
       unawaited(
-        _fetchChatData(
-          showLoadingIfEmpty: false,
-          showSyncIndicator: false,
-        ),
+        _fetchChatData(showLoadingIfEmpty: false, showSyncIndicator: false),
       );
     } catch (_) {
       // Keep cached messages visible if background sync fails.
@@ -1030,9 +1103,9 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
           final messages = fallback['messages'];
           return messages is List
               ? messages
-                  .whereType<Map>()
-                  .map((item) => Map<String, dynamic>.from(item))
-                  .toList()
+                    .whereType<Map>()
+                    .map((item) => Map<String, dynamic>.from(item))
+                    .toList()
               : const <Map<String, dynamic>>[];
         }
       }();
@@ -1044,13 +1117,14 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
       final merged = incoming.isEmpty
           ? _messages
           : (lastId == null && !hadCache)
-              ? incoming
-              : _mergeMessages(_messages, incoming);
+          ? incoming
+          : _mergeMessages(_messages, incoming);
 
       if (!mounted) return;
       setState(() {
         _applyChatDetails(chatDetails);
         _messages = merged;
+        _refreshOwnMessageStatuses();
         _isLoading = false;
         _isSyncing = false;
       });
@@ -1080,9 +1154,9 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
   ) async {
     final action = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: AuthColors.scaffoldBackground,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
         const emojis = ['👍', '🔥', '❤️', '👏', '😂', '😮'];
@@ -1090,18 +1164,35 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
 
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0E0E0),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
                 ListTile(
-                  leading: const Icon(Icons.reply_rounded, color: AuthColors.body),
+                  leading: const Icon(
+                    Icons.reply_rounded,
+                    color: AuthColors.body,
+                  ),
                   title: Text('Ответить', style: authFieldStyle()),
                   onTap: () => Navigator.pop(context, 'reply'),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   child: Wrap(
                     spacing: 12,
                     children: emojis
@@ -1116,7 +1207,10 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                                 color: const Color(0xFFF2F5F7),
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Text(emoji, style: const TextStyle(fontSize: 24)),
+                              child: Text(
+                                emoji,
+                                style: const TextStyle(fontSize: 24),
+                              ),
                             ),
                           ),
                         )
@@ -1126,11 +1220,15 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                 if (canDelete) ...[
                   const Divider(height: 1),
                   ListTile(
-                    leading: const Icon(Icons.delete_outline_rounded,
-                        color: Color(0xFFE53935)),
+                    leading: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: Color(0xFFE53935),
+                    ),
                     title: Text(
                       'Удалить',
-                      style: authFieldStyle().copyWith(color: const Color(0xFFE53935)),
+                      style: authFieldStyle().copyWith(
+                        color: const Color(0xFFE53935),
+                      ),
                     ),
                     onTap: () => Navigator.pop(context, 'delete'),
                   ),
@@ -1174,11 +1272,12 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
     }
 
     try {
-      final reactions = await GroupChatService(token: _token!).toggleMessageReaction(
-        chatId: widget.chatId,
-        messageId: serverId.toString(),
-        emoji: emoji,
-      );
+      final reactions = await GroupChatService(token: _token!)
+          .toggleMessageReaction(
+            chatId: widget.chatId,
+            messageId: serverId.toString(),
+            emoji: emoji,
+          );
       if (!mounted) return;
       _updateMessageReactions(serverId, reactions);
     } catch (e) {
@@ -1191,25 +1290,13 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
     Map<String, dynamic> message,
     String messageLocalId,
   ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Удалить сообщение?'),
-        content: const Text('Сообщение будет удалено для всех участников чата.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Удалить',
-              style: TextStyle(color: Color(0xFFE53935)),
-            ),
-          ),
-        ],
-      ),
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Удалить сообщение?',
+      message: 'Сообщение будет удалено для всех участников чата.',
+      confirmLabel: 'Удалить',
+      destructive: true,
+      icon: Icons.delete_outline_rounded,
     );
 
     if (confirmed != true || !mounted) return;
@@ -1223,10 +1310,9 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
     if (_token == null) return;
 
     try {
-      await GroupChatService(token: _token!).deleteMessage(
-        widget.chatId,
-        serverId.toString(),
-      );
+      await GroupChatService(
+        token: _token!,
+      ).deleteMessage(widget.chatId, serverId.toString());
       if (!mounted) return;
       _removeMessageFromList(serverId, localId: messageLocalId);
     } catch (e) {
@@ -1272,12 +1358,13 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
       _messages.insert(
         0,
         _normalizeMessage(
-          senderId: _currentUserId,
-          sender: 'Вы',
-          content: text,
-          timestamp: backendNowIsoUtc(),
-          localId: _nextLocalId(),
-        )
+            senderId: _currentUserId,
+            sender: 'Вы',
+            content: text,
+            timestamp: backendNowIsoUtc(),
+            localId: _nextLocalId(),
+            status: 'sending',
+          )
           ..['reply_to_sender'] = replySender
           ..['reply_to_text'] = replyText,
       );
@@ -1298,6 +1385,7 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
       routeShare: message['route_share'],
       reactions: message['reactions'],
       senderAvatarUrl: message['sender_avatar_url'],
+      status: message['status'],
     );
 
     setState(() {
@@ -1337,6 +1425,9 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
         originalFilename: originalFilename,
         title: shareTitle,
         snapshot: snapshot,
+        sharedByUserId: message['sender_id']?.toString(),
+        sharedByUserName: message['sender']?.toString(),
+        sharedByAvatarUrl: message['sender_avatar_url']?.toString(),
       );
       if (!mounted) return;
       AppSnackBar.show(context, 'Маршрут сохранён в историю');
@@ -1398,7 +1489,10 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AuthColors.title),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: AuthColors.title,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         titleSpacing: 0,
@@ -1417,11 +1511,10 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
               _chatSubtitle,
               style: authSubtitleStyle().copyWith(
                 fontSize: 11,
-                color: _typingUsers.isNotEmpty
-                    ? AuthColors.primaryGreen
-                    : null,
-                fontWeight:
-                    _typingUsers.isNotEmpty ? FontWeight.w600 : FontWeight.w400,
+                color: _typingUsers.isNotEmpty ? AuthColors.primaryGreen : null,
+                fontWeight: _typingUsers.isNotEmpty
+                    ? FontWeight.w600
+                    : FontWeight.w400,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -1443,13 +1536,10 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
         ],
       ),
       body: !_routeReady
-          ? const ColoredBox(
-              color: Color(0xFFF2F5F7),
-              child: SizedBox.expand(),
-            )
+          ? const ColoredBox(color: Color(0xFFF2F5F7), child: SizedBox.expand())
           : _isLoading && _messages.isEmpty
-              ? const Center(child: CircularProgressIndicator())
-              : Column(
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
               children: [
                 if (_isSyncing)
                   const LinearProgressIndicator(
@@ -1478,25 +1568,37 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                           itemCount: _messages.length,
                           itemBuilder: (context, index) {
                             final message = _messages[index];
-                            final currentDate = _parseTimestamp(message['timestamp']);
+                            final currentDate = _parseTimestamp(
+                              message['timestamp'],
+                            );
                             final nextOlderDate = index + 1 < _messages.length
-                                ? _parseTimestamp(_messages[index + 1]['timestamp'])
+                                ? _parseTimestamp(
+                                    _messages[index + 1]['timestamp'],
+                                  )
                                 : null;
                             final showDayDivider =
-                                nextOlderDate == null || !_isSameDay(currentDate, nextOlderDate);
+                                nextOlderDate == null ||
+                                !_isSameDay(currentDate, nextOlderDate);
 
                             final isCurrentUser =
-                                message['sender_id']?.toString() == _currentUserId;
+                                message['sender_id']?.toString() ==
+                                _currentUserId;
                             final sender = isCurrentUser
                                 ? 'Вы'
-                                : (message['sender']?.toString() ?? _currentUserName ?? 'Участник');
+                                : (message['sender']?.toString() ??
+                                      _currentUserName ??
+                                      'Участник');
                             final time = _formatTime(message['timestamp']);
-                            final messageId = message['local_id']?.toString() ?? '$index';
-                            final reactions = _parseReactions(message['reactions']);
+                            final messageId =
+                                message['local_id']?.toString() ?? '$index';
+                            final reactions = _parseReactions(
+                              message['reactions'],
+                            );
 
                             final avatarUrl = _avatarUrlForMessage(message);
                             final showAvatar =
-                                !isCurrentUser && _isFirstInSenderGroup(index, message);
+                                !isCurrentUser &&
+                                _isFirstInSenderGroup(index, message);
                             const avatarSize = 30.0;
                             const avatarColumnWidth = 30.0;
 
@@ -1508,15 +1610,20 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                               ),
                               child: Container(
                                 constraints: BoxConstraints(
-                                  maxWidth: MediaQuery.of(context).size.width *
+                                  maxWidth:
+                                      MediaQuery.of(context).size.width *
                                       (isCurrentUser ? 0.78 : 0.68),
                                 ),
                                 margin: EdgeInsets.only(
                                   top: showAvatar || isCurrentUser ? 3 : 1,
                                   bottom: 1,
                                 ),
-                                padding:
-                                    const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  8,
+                                  12,
+                                  8,
+                                ),
                                 decoration: BoxDecoration(
                                   color: isCurrentUser
                                       ? const Color(0xFFDCF8C6)
@@ -1524,17 +1631,19 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                                   borderRadius: BorderRadius.only(
                                     topLeft: const Radius.circular(14),
                                     topRight: const Radius.circular(14),
-                                    bottomLeft:
-                                        Radius.circular(isCurrentUser ? 14 : 4),
-                                    bottomRight:
-                                        Radius.circular(isCurrentUser ? 4 : 14),
+                                    bottomLeft: Radius.circular(
+                                      isCurrentUser ? 14 : 4,
+                                    ),
+                                    bottomRight: Radius.circular(
+                                      isCurrentUser ? 4 : 14,
+                                    ),
                                   ),
                                   boxShadow: const [
                                     BoxShadow(
                                       color: Color(0x14000000),
                                       blurRadius: 6,
                                       offset: Offset(0, 2),
-                                    )
+                                    ),
                                   ],
                                 ),
                                 child: Column(
@@ -1552,13 +1661,20 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                                     if (message['reply_to_sender'] != null &&
                                         message['reply_to_text'] != null)
                                       Container(
-                                        margin: const EdgeInsets.only(bottom: 6),
+                                        margin: const EdgeInsets.only(
+                                          bottom: 6,
+                                        ),
                                         padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 6),
+                                          horizontal: 8,
+                                          vertical: 6,
+                                        ),
                                         decoration: BoxDecoration(
-                                          color:
-                                              Colors.black.withValues(alpha: 0.06),
-                                          borderRadius: BorderRadius.circular(8),
+                                          color: Colors.black.withValues(
+                                            alpha: 0.06,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                           border: Border(
                                             left: BorderSide(
                                               color: isCurrentUser
@@ -1582,7 +1698,8 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                                               ),
                                             ),
                                             Text(
-                                              message['reply_to_text'].toString(),
+                                              message['reply_to_text']
+                                                  .toString(),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: GoogleFonts.lexendDeca(
@@ -1595,19 +1712,26 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                                       ),
                                     if (_isRouteMessage(message))
                                       ChatRouteMessageBubble(
-                                        title: (message['route_share'] as Map)['title']
+                                        title:
+                                            (message['route_share']
+                                                    as Map)['title']
                                                 ?.toString() ??
                                             'Маршрут',
-                                        fileName: (message['route_share'] as Map)[
-                                                    'originalFilename']
+                                        fileName:
+                                            (message['route_share']
+                                                    as Map)['originalFilename']
                                                 ?.toString() ??
                                             'route.gpx',
-                                        fileSize: ((message['route_share'] as Map)[
-                                                    'fileSize'] as num?)
-                                            ?.toInt(),
+                                        fileSize:
+                                            ((message['route_share']
+                                                        as Map)['fileSize']
+                                                    as num?)
+                                                ?.toInt(),
                                         isCurrentUser: isCurrentUser,
                                         isDownloading: _downloadingRouteKeys
-                                            .contains(_routeDownloadKey(message)),
+                                            .contains(
+                                              _routeDownloadKey(message),
+                                            ),
                                         onDownload: () =>
                                             _downloadSharedRoute(message),
                                       )
@@ -1632,10 +1756,8 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                                         ),
                                         if (isCurrentUser) ...[
                                           const SizedBox(width: 4),
-                                          const Icon(
-                                            Icons.done_all_rounded,
-                                            size: 14,
-                                            color: Color(0xFF6AA7D8),
+                                          ChatMessageStatusIcon(
+                                            status: _messageStatus(message),
                                           ),
                                         ],
                                       ],
@@ -1645,10 +1767,8 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                                       currentUserId: _currentUserId,
                                       onReactionTap: message['id'] == null
                                           ? null
-                                          : (emoji) => _toggleReaction(
-                                                message,
-                                                emoji,
-                                              ),
+                                          : (emoji) =>
+                                                _toggleReaction(message, emoji),
                                     ),
                                   ],
                                 ),
@@ -1694,14 +1814,23 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                                     ? Alignment.centerRight
                                     : Alignment.centerLeft,
                                 child: Container(
-                                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
                                   child: const Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.reply_rounded, color: AuthColors.body),
+                                      Icon(
+                                        Icons.reply_rounded,
+                                        color: AuthColors.body,
+                                      ),
                                       SizedBox(width: 6),
-                                      Text('Ответить',
-                                          style: TextStyle(color: AuthColors.body)),
+                                      Text(
+                                        'Ответить',
+                                        style: TextStyle(
+                                          color: AuthColors.body,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -1718,15 +1847,20 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                               children: [
                                 if (showDayDivider)
                                   Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 10,
+                                    ),
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 10, vertical: 4),
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: Colors.white,
                                         borderRadius: BorderRadius.circular(10),
                                         border: Border.all(
-                                            color: const Color(0xFFE4E4E4)),
+                                          color: const Color(0xFFE4E4E4),
+                                        ),
                                       ),
                                       child: Text(
                                         _dayLabel(currentDate),
@@ -1749,7 +1883,10 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                     padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
                     child: Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(10),
@@ -1757,7 +1894,11 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.reply_rounded, size: 18, color: AuthColors.body),
+                          const Icon(
+                            Icons.reply_rounded,
+                            size: 18,
+                            color: AuthColors.body,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Column(
@@ -1817,7 +1958,10 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                   top: false,
                   child: Container(
                     margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
@@ -1882,8 +2026,8 @@ class _ChatScreenState extends State<ChatScreen> with RouteAware {
                                         strokeWidth: 2,
                                         valueColor:
                                             AlwaysStoppedAnimation<Color>(
-                                          Colors.white,
-                                        ),
+                                              Colors.white,
+                                            ),
                                       ),
                                     )
                                   : const FaIcon(
@@ -1949,4 +2093,3 @@ class _TypingDotsState extends State<_TypingDots> {
     );
   }
 }
-

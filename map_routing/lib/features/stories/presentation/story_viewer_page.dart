@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:map_routing/core/navigation/open_user_profile.dart';
 import 'package:map_routing/core/widgets/user_avatar.dart';
 import 'package:map_routing/data/models/story.dart';
@@ -142,9 +143,7 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
       _startTimer();
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось удалить историю')),
-      );
+      AppSnackBar.show(context, 'Не удалось удалить историю');
     }
   }
 

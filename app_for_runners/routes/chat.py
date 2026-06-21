@@ -3,7 +3,7 @@ import os
 
 from flask import Blueprint, current_app, request, jsonify, send_file, url_for
 from extensions import db, socketio
-from models import User, GroupChat, GroupMessage, UserGroupChatAssociation, ChatRouteShare, MessageReaction
+from models import User, GroupChat, GroupMessage, UserGroupChatAssociation, ChatRouteShare, MessageReaction, Club, Friendship
 from utils.auth import token_required
 from utils.route_share_photo_storage import (
     delete_route_share_photo,
@@ -25,6 +25,11 @@ from utils.message_reactions import (
     reactions_map_for_message_ids,
     serialize_message_reactions,
     toggle_message_reaction,
+)
+from utils.chat_message_status import (
+    outgoing_message_status,
+    touch_member_received,
+    touch_received_from_messages,
 )
 from utils.user_avatar import avatar_url_for
 from sqlalchemy.exc import IntegrityError
@@ -104,7 +109,7 @@ def _serialize_route_share(route_share):
     return data
 
 
-def _serialize_message(message, reactions=None):
+def _serialize_message(message, reactions=None, viewer_id=None):
     sender_name = (
         _member_name(message.sender) if message.sender else f'User {message.sender_id}'
     )
@@ -123,6 +128,12 @@ def _serialize_message(message, reactions=None):
         data['reactions'] = serialize_message_reactions(message)
     else:
         data['reactions'] = reactions
+    if viewer_id is not None and message.sender_id == viewer_id:
+        data['status'] = outgoing_message_status(
+            message,
+            message.chat_id,
+            viewer_id,
+        )
     return data
 
 
@@ -136,12 +147,13 @@ def _load_chat_messages(chat, after_id=None):
     ).all()
 
 
-def _serialize_messages(messages):
+def _serialize_messages(messages, viewer_id=None):
     reactions_map = reactions_map_for_message_ids([message.id for message in messages])
     return [
         _serialize_message(
             message,
             reactions=reactions_map.get(message.id, []),
+            viewer_id=viewer_id,
         )
         for message in messages
     ]
@@ -241,6 +253,18 @@ def _chat_member_or_403(user_id, chat_id):
         return None, None, (jsonify({'error': 'Access denied'}), 403)
 
     return chat, association, None
+
+
+def _emit_member_state_updated(chat_id, user_id, read_at=None, received_at=None):
+    payload = {
+        'chat_id': chat_id,
+        'user_id': user_id,
+    }
+    if read_at is not None:
+        payload['read_at'] = utc_isoformat(read_at)
+    if received_at is not None:
+        payload['received_at'] = utc_isoformat(received_at)
+    socketio.emit('member_state_updated', payload, room=str(chat_id))
 
 
 def _emit_chat_message(chat_id, message_data):
@@ -349,6 +373,71 @@ def _normalize_member_ids(raw_ids, creator_id):
             if normalized is not None:
                 ids.add(normalized)
     return ids
+
+
+def _club_chat_ids():
+    return {
+        row.group_chat_id
+        for row in Club.query.filter(Club.group_chat_id.isnot(None)).all()
+        if row.group_chat_id is not None
+    }
+
+
+def _are_friends(user_id, other_user_id):
+    if user_id == other_user_id:
+        return False
+    return Friendship.query.filter(
+        Friendship.status == 'accepted',
+        or_(
+            and_(Friendship.user_id == user_id, Friendship.friend_id == other_user_id),
+            and_(Friendship.user_id == other_user_id, Friendship.friend_id == user_id),
+        ),
+    ).first() is not None
+
+
+def _find_direct_chat(user_id, other_user_id):
+    club_ids = _club_chat_ids()
+    user_chat_ids = db.session.scalars(
+        select(UserGroupChatAssociation.chat_id).where(
+            UserGroupChatAssociation.user_id == user_id
+        )
+    ).all()
+
+    for chat_id in user_chat_ids:
+        if chat_id in club_ids:
+            continue
+        member_ids = db.session.scalars(
+            select(UserGroupChatAssociation.user_id).where(
+                UserGroupChatAssociation.chat_id == chat_id
+            )
+        ).all()
+        if len(member_ids) == 2 and other_user_id in member_ids:
+            return GroupChat.query.get(chat_id)
+    return None
+
+
+def _serialize_direct_chat_response(chat, user_id, *, created):
+    association = UserGroupChatAssociation.query.filter_by(
+        user_id=user_id, chat_id=chat.id
+    ).first()
+    latest = _latest_messages_by_chat([chat.id]).get(chat.id)
+    creator_id = chat.creator_id or _resolve_creator_id(chat)
+    payload = {
+        'id': chat.id,
+        'title': chat.title,
+        'lastMessage': _message_preview(latest),
+        'lastMessageSender': _last_message_sender_name(latest),
+        'unreadCount': _unread_count(association, chat, user_id) if association else 0,
+        'creatorId': creator_id,
+        'creatorName': _creator_names_by_id({creator_id}).get(creator_id)
+        if creator_id
+        else None,
+        'isInvitationUnread': _is_invitation_unread(association, chat, user_id),
+        'photoUrl': _chat_photo_url(chat),
+        'notificationsMuted': _association_notifications_muted(association),
+        'created': created,
+    }
+    return payload
 
 
 def _emit_chat_added(chat, recipient_user_ids):
@@ -482,6 +571,12 @@ def get_group_chats(user_id):
         return jsonify({'error': 'User not found'}), 404
 
     chats = list(user.group_chats)
+    club_chat_ids = {
+        row.group_chat_id
+        for row in Club.query.filter(Club.group_chat_id.isnot(None)).all()
+    }
+    if club_chat_ids:
+        chats = [chat for chat in chats if chat.id not in club_chat_ids]
     if not chats:
         return jsonify({'chats': [], 'unreadInvitationCount': 0}), 200
 
@@ -577,6 +672,46 @@ def create_group_chat(user_id):
         return jsonify({'error': 'Ошибка при создании чата'}), 500
 
 
+@chat_bp.route('/api/group_chats/direct', methods=['POST'])
+@token_required
+def get_or_create_direct_chat(user_id):
+    data = request.get_json() or {}
+    other_user_id = _normalize_member_id(data.get('user_id'))
+    if other_user_id is None:
+        return jsonify({'error': 'Не указан ID пользователя'}), 400
+    if other_user_id == user_id:
+        return jsonify({'error': 'Нельзя создать чат с самим собой'}), 400
+
+    other_user = User.query.options(joinedload(User.user_info)).get(other_user_id)
+    if not other_user:
+        return jsonify({'error': 'Пользователь не найден'}), 404
+    if not _are_friends(user_id, other_user_id):
+        return jsonify({'error': 'Пользователи не являются друзьями'}), 403
+
+    existing = _find_direct_chat(user_id, other_user_id)
+    if existing:
+        return jsonify(
+            _serialize_direct_chat_response(existing, user_id, created=False)
+        ), 200
+
+    new_chat = GroupChat(title=_member_name(other_user), creator_id=user_id)
+    db.session.add(new_chat)
+    db.session.flush()
+    _add_chat_member(new_chat.id, user_id, invitation_seen=True)
+    _add_chat_member(new_chat.id, other_user_id, invitation_seen=True)
+
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': 'Не удалось создать чат'}), 409
+
+    _emit_chat_added(new_chat, [other_user_id])
+    return jsonify(
+        _serialize_direct_chat_response(new_chat, user_id, created=True)
+    ), 201
+
+
 @chat_bp.route('/api/group_chats/<int:chat_id>/join', methods=['POST'])
 @token_required
 def join_group_chat(user_id, chat_id):
@@ -632,7 +767,11 @@ def get_group_chat_details(user_id, chat_id):
     ).get(chat_id)
 
     include_messages = request.args.get('include_messages', 'true').lower() != 'false'
-    messages = _serialize_messages(_load_chat_messages(chat)) if include_messages else []
+    loaded_messages = _load_chat_messages(chat) if include_messages else []
+    messages = _serialize_messages(loaded_messages, viewer_id=user_id) if include_messages else []
+    if include_messages and association is not None:
+        touch_received_from_messages(association, loaded_messages)
+        db.session.commit()
 
     creator_id = _resolve_creator_id(chat)
 
@@ -742,12 +881,16 @@ def get_group_chat_photo(chat_id):
 @chat_bp.route('/api/group_chats/<int:chat_id>/messages', methods=['GET'])
 @token_required
 def get_group_chat_messages(user_id, chat_id):
-    chat, _, error = _chat_member_or_403(user_id, chat_id)
+    chat, association, error = _chat_member_or_403(user_id, chat_id)
     if error:
         return error
 
     after_id = request.args.get('after_id', type=int)
-    messages = _serialize_messages(_load_chat_messages(chat, after_id=after_id))
+    loaded_messages = _load_chat_messages(chat, after_id=after_id)
+    messages = _serialize_messages(loaded_messages, viewer_id=user_id)
+    if association is not None:
+        touch_received_from_messages(association, loaded_messages)
+        db.session.commit()
     return jsonify({'messages': messages}), 200
 
 
@@ -861,8 +1004,16 @@ def mark_group_chat_read(user_id, chat_id):
 
     now = _utcnow()
     association.last_read_at = now
+    touch_member_received(association, now)
     association.invitation_seen_at = now
     db.session.commit()
+
+    _emit_member_state_updated(
+        chat_id,
+        user_id,
+        read_at=now,
+        received_at=now,
+    )
 
     return jsonify({
         'message': 'Chat marked as read',
@@ -969,7 +1120,7 @@ def share_route_in_chat(user_id, chat_id):
     db.session.add(message)
     db.session.commit()
 
-    message_data = _serialize_message(message)
+    message_data = _serialize_message(message, viewer_id=user_id)
     _emit_chat_message(chat_id, message_data)
 
     return jsonify({'message': message_data}), 201

@@ -4,23 +4,37 @@ import 'package:flutter/material.dart';
 import 'package:map_routing/data/models/track_point.dart';
 import 'package:map_routing/features/profile/presentation/profile_ui.dart';
 
+List<TrackPoint> parseGeoJsonTrackPoints(Map<String, dynamic>? geoJson) {
+  final coords = geoJson?['coordinates'];
+  if (coords is! List || coords.isEmpty) return [];
+
+  final points = <TrackPoint>[];
+  for (final item in coords) {
+    if (item is! List || item.length < 2) continue;
+    final lon = (item[0] as num).toDouble();
+    final lat = (item[1] as num).toDouble();
+    points.add(TrackPoint(latitude: lat, longitude: lon));
+  }
+  return points;
+}
+
 /// Лёгкое превью маршрута без MapKit (безопасно в списках карточек).
 class RoutePolylinePreview extends StatelessWidget {
   const RoutePolylinePreview({
     super.key,
     required this.points,
     this.height = 88,
-    this.borderRadius = 12,
+    this.borderRadius = const BorderRadius.all(Radius.circular(12)),
   });
 
   final List<TrackPoint> points;
   final double height;
-  final double borderRadius;
+  final BorderRadiusGeometry borderRadius;
 
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
+      borderRadius: borderRadius,
       child: SizedBox(
         height: height,
         width: double.infinity,
@@ -82,39 +96,53 @@ class _RoutePreviewPainter extends CustomPainter {
       path.lineTo(p.dx, p.dy);
     }
 
-    final shadowPaint = Paint()
-      ..color = ProfileColors.primaryGreen.withValues(alpha: 0.18)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    canvas.drawPath(path, shadowPaint);
-
     final linePaint = Paint()
       ..color = ProfileColors.primaryGreen
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
+      ..strokeWidth = 4
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
+
+    final outlinePaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 7
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(path, outlinePaint);
     canvas.drawPath(path, linePaint);
 
     final start = project(points.first);
     final end = project(points.last);
-    _drawDot(canvas, start, ProfileColors.primaryGreen);
-    _drawDot(canvas, end, ProfileColors.orange);
+    _drawStartMarker(canvas, start);
+    _drawFinishMarker(canvas, end);
   }
 
-  void _drawDot(Canvas canvas, Offset center, Color color) {
-    canvas.drawCircle(
-      center,
-      4.5,
-      Paint()..color = Colors.white,
-    );
-    canvas.drawCircle(
-      center,
-      3.5,
-      Paint()..color = color,
-    );
+  void _drawStartMarker(Canvas canvas, Offset center) {
+    canvas.drawCircle(center, 6.5, Paint()..color = Colors.white);
+    canvas.drawCircle(center, 5.0, Paint()..color = const Color(0xFFFF9800));
+  }
+
+  void _drawFinishMarker(Canvas canvas, Offset center) {
+    canvas.drawCircle(center, 7.0, Paint()..color = const Color(0xFF212121));
+    canvas.drawCircle(center, 5.8, Paint()..color = Colors.white);
+
+    const cell = 2.4;
+    final origin = Offset(center.dx - cell, center.dy - cell * 0.75);
+    for (var row = 0; row < 2; row++) {
+      for (var col = 0; col < 2; col++) {
+        final isDark = (row + col).isOdd;
+        canvas.drawRect(
+          Rect.fromLTWH(
+            origin.dx + col * cell,
+            origin.dy + row * cell,
+            cell,
+            cell,
+          ),
+          Paint()..color = isDark ? const Color(0xFF212121) : Colors.white,
+        );
+      }
+    }
   }
 
   @override

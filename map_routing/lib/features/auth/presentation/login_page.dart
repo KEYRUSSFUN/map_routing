@@ -3,6 +3,7 @@ import 'package:map_routing/data/services/google_auth_service.dart';
 import 'package:map_routing/data/services/registration_service.dart';
 import 'package:map_routing/features/auth/presentation/auth_flow.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
+import 'package:map_routing/features/auth/presentation/forgot_password_page.dart';
 import 'package:map_routing/features/auth/presentation/create_account_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -75,6 +76,17 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  void _openForgotPassword() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ForgotPasswordPage(
+          initialEmail: _emailController.text.trim(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AuthScaffold(
@@ -127,7 +139,7 @@ class _LoginPageState extends State<LoginPage> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {},
+                    onPressed: _openForgotPassword,
                     style: TextButton.styleFrom(
                       foregroundColor: AuthColors.forgotPassword,
                       padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),

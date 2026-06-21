@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:map_routing/core/navigation/open_user_profile.dart';
+import 'package:map_routing/core/widgets/app_confirm_dialog.dart';
 import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:map_routing/core/widgets/user_avatar.dart';
 import 'package:map_routing/data/models/challenge.dart';
@@ -65,34 +66,14 @@ class _ChallengeDetailPageState extends State<ChallengeDetailPage> {
   }
 
   Future<void> _confirmLeave() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          'Выйти из челленджа?',
-          style: GoogleFonts.lexendDeca(
-            fontWeight: FontWeight.w700,
-            color: AuthColors.title,
-          ),
-        ),
-        content: Text(
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Выйти из челленджа?',
+      message:
           'Ваш прогресс сохранится в статистике, но вы перестанете участвовать в рейтинге.',
-          style: authSubtitleStyle(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text('Отмена', style: authLinkStyle()),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(
-              'Выйти',
-              style: authLinkStyle().copyWith(color: Colors.redAccent),
-            ),
-          ),
-        ],
-      ),
+      confirmLabel: 'Выйти',
+      destructive: true,
+      icon: Icons.logout_rounded,
     );
 
     if (confirmed == true) {

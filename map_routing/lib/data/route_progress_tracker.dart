@@ -51,6 +51,74 @@ class RouteProgressTracker {
   PathSnapResult? get lastPathSnap => _lastPathSnap;
   double get completedMeters => _completedMeters;
 
+  List<Point> collectPathPointsBetween(double startMeters, double endMeters) {
+    if (pathPoints.length < 2 || endMeters <= startMeters + 0.5) {
+      return const [];
+    }
+
+    final from = startMeters.clamp(0.0, totalMeters);
+    final to = endMeters.clamp(from, totalMeters);
+    if (to <= from + 0.5) return const [];
+
+    final points = <Point>[_pointAtMeters(from)];
+    for (var i = 0; i < pathPoints.length - 1; i++) {
+      final segStartM = _cumulativeMeters[i];
+      final segEndM = _cumulativeMeters[i + 1];
+      if (segEndM <= from) continue;
+      if (segStartM >= to) break;
+
+      if (segEndM <= to) {
+        points.add(pathPoints[i + 1]);
+      } else {
+        points.add(_pointAtMeters(to));
+        break;
+      }
+    }
+
+    return _dedupeAdjacentPoints(points);
+  }
+
+  Point _pointAtMeters(double meters) {
+    final target = meters.clamp(0.0, totalMeters);
+    for (var i = 0; i < pathPoints.length - 1; i++) {
+      final segStartM = _cumulativeMeters[i];
+      final segEndM = _cumulativeMeters[i + 1];
+      if (target > segEndM) continue;
+
+      final segLength = segEndM - segStartM;
+      if (segLength <= 0) return pathPoints[i];
+
+      final t = ((target - segStartM) / segLength).clamp(0.0, 1.0);
+      final start = pathPoints[i];
+      final end = pathPoints[i + 1];
+      return Point(
+        latitude: start.latitude + (end.latitude - start.latitude) * t,
+        longitude: start.longitude + (end.longitude - start.longitude) * t,
+      );
+    }
+
+    return pathPoints.last;
+  }
+
+  static List<Point> _dedupeAdjacentPoints(List<Point> points) {
+    if (points.length < 2) return points;
+    final deduped = <Point>[points.first];
+    for (var i = 1; i < points.length; i++) {
+      final prev = deduped.last;
+      final next = points[i];
+      if (Geolocator.distanceBetween(
+            prev.latitude,
+            prev.longitude,
+            next.latitude,
+            next.longitude,
+          ) >=
+          0.5) {
+        deduped.add(next);
+      }
+    }
+    return deduped;
+  }
+
   RouteProgressSnapshot update(
     double latitude,
     double longitude, {

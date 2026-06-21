@@ -47,6 +47,7 @@ class ProfileStatisticsSnapshot {
     var currentWeekM = 0.0;
     var previousWeekM = 0.0;
 
+    final aggregatedByDate = <String, Map<String, num>>{};
     for (final raw in stats) {
       final stat = StatisticsService._asMap(raw);
       final date = StatisticsService._dateKey(stat['date']);
@@ -56,26 +57,38 @@ class ProfileStatisticsSnapshot {
       final steps = (stat['steps'] as num?)?.toInt() ?? 0;
       final calories = (stat['calories'] as num?)?.toDouble() ?? 0.0;
 
+      final bucket = aggregatedByDate.putIfAbsent(
+        date,
+        () => {'distance': 0.0, 'steps': 0, 'calories': 0.0},
+      );
+      bucket['distance'] = bucket['distance']! + distance;
+      bucket['steps'] = bucket['steps']! + steps;
+      bucket['calories'] = bucket['calories']! + calories;
+    }
+
+    for (final entry in aggregatedByDate.entries) {
+      final date = entry.key;
+      final distance = entry.value['distance']!.toDouble();
+      final steps = entry.value['steps']!.toInt();
+      final calories = entry.value['calories']!.toDouble();
+
       totalDistanceM += distance;
       totalSteps += steps;
       totalCalories += calories;
 
-      final bucket = dayStats[date];
-      if (bucket != null) {
-        bucket['distance'] = (bucket['distance'] as num).toDouble() + distance;
-        bucket['steps'] = (bucket['steps'] as num).toInt() + steps;
-        bucket['calories'] = (bucket['calories'] as num).toDouble() + calories;
+      final dayBucket = dayStats[date];
+      if (dayBucket != null) {
+        dayBucket['distance'] = distance;
+        dayBucket['steps'] = steps;
+        dayBucket['calories'] = calories;
       }
 
-      final parsed = DateTime.tryParse(date);
-      if (parsed != null) {
-        final day = DateTime(parsed.year, parsed.month, parsed.day);
-        final daysAgo = today.difference(day).inDays;
-        if (daysAgo >= 0 && daysAgo < 7) {
-          currentWeekM += distance;
-        } else if (daysAgo >= 7 && daysAgo < 14) {
-          previousWeekM += distance;
-        }
+      final day = StatisticsService._localDateFromKey(date);
+      final daysAgo = today.difference(day).inDays;
+      if (daysAgo >= 0 && daysAgo < 7) {
+        currentWeekM += distance;
+      } else if (daysAgo >= 7 && daysAgo < 14) {
+        previousWeekM += distance;
       }
     }
 
@@ -155,6 +168,15 @@ class StatisticsService {
     final parsed = DateTime.tryParse(text);
     if (parsed == null) return null;
     return _formatDateKey(parsed.toLocal());
+  }
+
+  static DateTime _localDateFromKey(String dateKey) {
+    final parts = dateKey.split('-');
+    return DateTime(
+      int.parse(parts[0]),
+      int.parse(parts[1]),
+      int.parse(parts[2]),
+    );
   }
 
   static Map<String, dynamic> _asMap(dynamic value) {

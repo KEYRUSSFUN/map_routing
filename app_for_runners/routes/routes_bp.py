@@ -6,8 +6,10 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify, send_file, url_for
 from utils.auth import token_required
 from extensions import db
-from models import Route
+from models import Route, Friendship
 from utils.workout_photo_storage import save_workout_photo, workout_photo_file_path
+from utils.statistics_helper import apply_route_to_statistics
+from sqlalchemy import or_, and_
 
 routes_bp = Blueprint('routes', __name__)
 
@@ -76,11 +78,51 @@ def _serialize_route(route):
     }
 
 
+def _are_friends(user_a, user_b):
+    if user_a == user_b:
+        return True
+    return (
+        Friendship.query.filter(
+            Friendship.status == 'accepted',
+            or_(
+                and_(Friendship.user_id == user_a, Friendship.friend_id == user_b),
+                and_(Friendship.user_id == user_b, Friendship.friend_id == user_a),
+            ),
+        ).first()
+        is not None
+    )
+
+
+def _route_visible_to_viewer(route, viewer_id, owner_id):
+    if viewer_id == owner_id:
+        return True
+    privacy = (route.privacy or 'friends').strip().lower()
+    if privacy == 'private':
+        return False
+    if privacy == 'everyone':
+        return True
+    if privacy == 'friends':
+        return _are_friends(viewer_id, owner_id)
+    return False
+
+
 @routes_bp.route('/api/routes', methods=['GET'])
 @token_required
 def get_routes(user_id):
     routes = Route.query.filter_by(id_User=user_id).all()
     return jsonify([_serialize_route(route) for route in routes]), 200
+
+
+@routes_bp.route('/api/routes/user/<int:target_user_id>', methods=['GET'])
+@token_required
+def get_user_routes(user_id, target_user_id):
+    routes = Route.query.filter_by(id_User=target_user_id).all()
+    visible = [
+        route
+        for route in routes
+        if _route_visible_to_viewer(route, user_id, target_user_id)
+    ]
+    return jsonify([_serialize_route(route) for route in visible]), 200
 
 
 @routes_bp.route('/api/routes', methods=['POST'])
@@ -116,6 +158,8 @@ def create_route(user_id):
         started_at_local_hour=data.get('started_at_local_hour'),
     )
     db.session.add(new_route)
+    db.session.flush()
+    apply_route_to_statistics(new_route)
     db.session.commit()
     return jsonify({'success': True, 'id': new_route.id_Route, 'route': _serialize_route(new_route)}), 200
 
@@ -229,6 +273,7 @@ def delete_route(user_id, route_id):
         except OSError:
             pass
 
+    apply_route_to_statistics(route, multiplier=-1)
     db.session.delete(route)
     db.session.commit()
     return jsonify({'success': True}), 200

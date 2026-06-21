@@ -225,7 +225,7 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
                       onPressed: _uploadingPhoto ? null : _pickPhoto,
                       icon: const Icon(Icons.photo_camera_outlined, size: 18),
                       style: IconButton.styleFrom(
-                        backgroundColor: AuthColors.primaryGreen,
+                        backgroundColor: const Color.fromARGB(255, 0, 230, 119),
                         foregroundColor: Colors.white,
                       ),
                     ),

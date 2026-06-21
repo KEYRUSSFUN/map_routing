@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:map_routing/core/widgets/app_confirm_dialog.dart';
 import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:map_routing/data/models/achievement.dart';
 import 'package:map_routing/data/models/challenge.dart';
 import 'package:map_routing/data/models/moment.dart';
 import 'package:map_routing/data/models/story.dart';
+import 'package:map_routing/data/services/achievement_seen_storage.dart';
 import 'package:map_routing/data/services/achievement_service.dart';
 import 'package:map_routing/data/services/challenge_service.dart';
 import 'package:map_routing/data/services/friend_service.dart';
@@ -13,6 +15,7 @@ import 'package:map_routing/data/services/moment_service.dart';
 import 'package:map_routing/data/services/story_service.dart';
 import 'package:map_routing/features/challenges/presentation/challenge_detail_page.dart';
 import 'package:map_routing/features/home/home_page_controller.dart';
+import 'package:map_routing/features/moments/presentation/edit_moment_sheet.dart';
 import 'package:map_routing/features/moments/presentation/moment_comments_sheet.dart';
 import 'package:map_routing/features/moments/presentation/publish_moment_sheet.dart';
 import 'package:map_routing/features/stories/presentation/publish_story_dialog.dart';
@@ -24,11 +27,14 @@ import 'package:map_routing/core/widgets/app_bottom_nav_bar.dart';
 import 'package:map_routing/data/models/planned_workout.dart';
 import 'package:map_routing/data/models/workout_summary.dart';
 import 'package:map_routing/data/services/gpx_workout_service.dart';
+import 'package:map_routing/data/services/profile_statistics_service.dart';
 import 'package:map_routing/features/profile/presentation/edit_profile.dart';
 import 'package:map_routing/features/profile/presentation/profile_ui.dart';
+import 'package:map_routing/features/profile/presentation/profile_cover_picker_page.dart';
 import 'package:map_routing/features/profile/presentation/settings_page.dart';
 import 'package:map_routing/features/profile/widgets/achievement_details_sheet.dart';
 import 'package:map_routing/features/profile/widgets/planned_workouts_section.dart';
+import 'package:map_routing/features/profile/presentation/widgets/profile_statistics_tab.dart';
 import 'package:map_routing/features/profile/presentation/workout_detail_page.dart';
 import 'package:map_routing/core/navigation/app_route_observer.dart';
 import 'package:map_routing/data/services/user_workout_storage.dart';
@@ -54,6 +60,9 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
   String name = '';
   String country = '';
   String userAvatarUrl = '';
+  String userCoverUrl = '';
+  String? userCoverPreset;
+  String _sex = 'male';
 
   double? distance;
   int? steps;
@@ -64,7 +73,7 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
   bool _weeklyStatsLoading = false;
 
   bool isLoading = true;
-  ProfileTab _selectedTab = ProfileTab.statistics;
+  ProfileTab _selectedTab = ProfileTab.events;
 
   List<WorkoutSummary> _workouts = [];
   bool _workoutsLoading = false;
@@ -75,6 +84,7 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
 
   List<AchievementStatus> _achievements = [];
   bool _achievementsLoading = false;
+  Set<String> _seenAchievementIds = {};
   final _allAchievementsKey = GlobalKey();
 
   List<ChallengeSummary> _joinedChallenges = [];
@@ -138,13 +148,15 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
         name: name,
         country: country,
         avatarUrl: userAvatarUrl,
+        coverUrl: userCoverUrl,
+        coverPresetId: userCoverPreset,
         distanceKm: distance ?? 0,
         steps: steps ?? 0,
         calories: calories ?? 0,
         weeklyDistanceKm: _weeklyDistanceKm ?? 0,
         weekChangeLabel: _weekChangeLabel ?? '',
-        weeklyActivity: _weeklyActivityData ??
-            const [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        weeklyActivity:
+            _weeklyActivityData ?? const [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
       ),
     );
   }
@@ -163,6 +175,8 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
       name = snapshot.name;
       country = snapshot.country;
       userAvatarUrl = snapshot.avatarUrl;
+      userCoverUrl = snapshot.coverUrl;
+      userCoverPreset = snapshot.coverPresetId;
       distance = snapshot.distanceKm;
       steps = snapshot.steps;
       calories = snapshot.calories;
@@ -175,11 +189,13 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
 
   Future<void> _bootstrapProfile() async {
     await _hydrateFromProfileCache();
-    unawaited(_initializeFriendService().then((_) {
-      fetchFriendRequests();
-      _loadChallenges();
-      _loadStories();
-    }));
+    unawaited(
+      _initializeFriendService().then((_) {
+        fetchFriendRequests();
+        _loadChallenges();
+        _loadStories();
+      }),
+    );
     fetchUserInfo();
     fetchStatistics();
     unawaited(_loadWorkouts());
@@ -192,10 +208,12 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
     setState(() => _achievementsLoading = true);
 
     try {
+      final seen = await AchievementSeenStorage.instance.loadSeen();
       final result = await _achievementService.sync();
 
       if (!mounted) return;
       setState(() {
+        _seenAchievementIds = seen;
         _achievements = result.all;
         _achievementsLoading = false;
       });
@@ -204,6 +222,21 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
       setState(() => _achievementsLoading = false);
       AppSnackBar.show(context, 'Не удалось загрузить достижения: $e');
     }
+  }
+
+  bool _shouldShowAchievementDot(AchievementStatus status) {
+    return status.unlocked &&
+        !_seenAchievementIds.contains(status.definition.storageKey);
+  }
+
+  Future<void> _markAchievementSeen(AchievementStatus status) async {
+    if (!status.unlocked) return;
+    final key = status.definition.storageKey;
+    if (_seenAchievementIds.contains(key)) return;
+
+    await AchievementSeenStorage.instance.markSeen(key);
+    if (!mounted) return;
+    setState(() => _seenAchievementIds.add(key));
   }
 
   Future<void> _loadWorkouts({bool force = false}) async {
@@ -228,7 +261,9 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
           weightKg = double.tryParse(userData['weight'].toString());
         }
         final ageRaw = userData['age'];
-        userAge = ageRaw is int ? ageRaw : int.tryParse(ageRaw?.toString() ?? '');
+        userAge = ageRaw is int
+            ? ageRaw
+            : int.tryParse(ageRaw?.toString() ?? '');
       }
 
       final workouts = await _gpxWorkoutService.loadWorkouts(
@@ -242,6 +277,7 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
         _workouts = workouts;
         _workoutsLoaded = true;
       });
+      _applyWorkoutBasedWeeklyStats();
     } catch (_) {
       if (!mounted) return;
       AppSnackBar.show(context, 'Не удалось обновить историю маршрутов');
@@ -259,6 +295,34 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
       if (a[i] != b[i]) return false;
     }
     return true;
+  }
+
+  void _applyWorkoutBasedWeeklyStats() {
+    if (!mounted) return;
+
+    final ownWorkouts = _myWorkouts;
+    final week = ProfileStatisticsService.computeRollingSevenDaySnapshot(
+      ownWorkouts,
+    );
+    final weekChangeLabel = StatisticsService.formatWeekChangeLabel(
+      week.weekOverWeekChangePercent,
+    );
+
+    setState(() {
+      if (ownWorkouts.isNotEmpty) {
+        final totals = ProfileStatisticsService.computeTotals(ownWorkouts);
+        distance = totals.totalDistanceM / 1000.0;
+        calories = ownWorkouts.fold<double>(
+          0,
+          (sum, workout) => sum + (workout.calories ?? 0),
+        );
+      }
+      _weeklyDistanceKm = week.weekDistanceKm;
+      _weekChangeLabel = weekChangeLabel;
+      _weeklyActivityData = List<double>.from(week.dailyDistanceMeters);
+      _weeklyStatsLoading = false;
+    });
+    unawaited(_persistProfileCache());
   }
 
   Future<void> fetchStatistics({bool force = false}) async {
@@ -279,16 +343,18 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
 
       if (!mounted) return;
 
-      final weekChangeLabel =
-          StatisticsService.formatWeekChangeLabel(snapshot.weekOverWeekChangePercent);
-      final unchanged = distance == snapshot.totals.distanceKm &&
+      final weekChangeLabel = StatisticsService.formatWeekChangeLabel(
+        snapshot.weekOverWeekChangePercent,
+      );
+      final unchanged =
+          distance == snapshot.totals.distanceKm &&
           steps == snapshot.totals.steps &&
           calories == snapshot.totals.calories &&
           _weeklyDistanceKm == snapshot.week.distanceKm &&
           _weekChangeLabel == weekChangeLabel &&
           _weeklyDataEqual(_weeklyActivityData, snapshot.dailyDistanceMeters);
 
-      if (unchanged) {
+      if (unchanged && !force) {
         if (_weeklyStatsLoading || isLoading) {
           setState(() {
             _weeklyStatsLoading = false;
@@ -304,11 +370,15 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
         calories = snapshot.totals.calories;
         _weeklyDistanceKm = snapshot.week.distanceKm;
         _weekChangeLabel = weekChangeLabel;
-        _weeklyActivityData = snapshot.dailyDistanceMeters;
+        _weeklyActivityData = List<double>.from(snapshot.dailyDistanceMeters);
         _weeklyStatsLoading = false;
         isLoading = false;
       });
-      unawaited(_persistProfileCache());
+      if (_workoutsLoaded) {
+        _applyWorkoutBasedWeeklyStats();
+      } else {
+        unawaited(_persistProfileCache());
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -341,6 +411,9 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
       name = data['name'] ?? 'Без имени';
       country = data['country'] ?? '';
       userAvatarUrl = data['avatar_url']?.toString() ?? '';
+      userCoverUrl = data['cover_url']?.toString() ?? '';
+      userCoverPreset = data['cover_preset']?.toString();
+      _sex = _normalizeSex(data['sex']?.toString());
       isLoading = false;
     });
     unawaited(_persistProfileCache());
@@ -533,26 +606,32 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
     });
   }
 
+  Future<void> _editMoment(int index) async {
+    if (_momentService == null) return;
+    final moment = _myMoments[index];
+
+    final updated = await showEditMomentSheet(
+      context,
+      momentService: _momentService!,
+      moment: moment,
+    );
+
+    if (!mounted || updated == null) return;
+    setState(() => _myMoments[index] = updated);
+    await HomePageController.instance.refresh(force: true);
+  }
+
   Future<void> _deleteMoment(int index) async {
     if (_momentService == null) return;
     final moment = _myMoments[index];
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Удалить момент?'),
-        content: const Text('Запись будет удалена из профиля и ленты.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Удалить момент?',
+      message: 'Запись будет удалена из профиля и ленты.',
+      confirmLabel: 'Удалить',
+      destructive: true,
+      icon: Icons.delete_outline_rounded,
     );
 
     if (confirmed != true || !mounted) return;
@@ -606,8 +685,8 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
   }
 
   Future<void> scrollToChallenges() async {
-    if (_selectedTab != ProfileTab.statistics) {
-      setState(() => _selectedTab = ProfileTab.statistics);
+    if (_selectedTab != ProfileTab.events) {
+      setState(() => _selectedTab = ProfileTab.events);
     }
 
     await _loadChallenges(force: true);
@@ -644,26 +723,42 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
 
   @override
   void didPopNext() {
-    refreshData(force: false);
+    fetchStatistics(force: true);
+    _loadWorkouts(force: true);
+    _loadStories(force: true);
+    _loadMoments(force: true);
+    _loadChallenges(force: true);
+  }
+
+  String get _athleteSubtitle => _sex == 'female' ? 'Спортсменка' : 'Спортсмен';
+
+  String _normalizeSex(String? raw) {
+    final value = raw?.toLowerCase().trim() ?? '';
+    if (value == 'female' ||
+        value == 'f' ||
+        value == 'ж' ||
+        value == 'женский') {
+      return 'female';
+    }
+    return 'male';
   }
 
   List<ProfileStatPillData> get _statPills => [
-        ProfileStatPillData(
-          icon: Icons.directions_run,
-          label:
-              distance != null ? '${distance!.toStringAsFixed(1)} км' : '-- км',
-        ),
-        ProfileStatPillData(
-          icon: Icons.terrain,
-          label: steps != null ? '$steps шагов' : '-- шагов',
-        ),
-        ProfileStatPillData(
-          icon: Icons.emoji_events_outlined,
-          label: calories != null
-              ? '${calories!.toStringAsFixed(0)} ккал'
-              : '-- ккал',
-        ),
-      ];
+    ProfileStatPillData(
+      icon: Icons.straighten_rounded,
+      label: distance != null ? '${distance!.toStringAsFixed(1)} км' : '-- км',
+    ),
+    ProfileStatPillData(
+      icon: Icons.directions_walk_rounded,
+      label: steps != null ? '$steps шагов' : '-- шагов',
+    ),
+    ProfileStatPillData(
+      icon: Icons.local_fire_department_outlined,
+      label: calories != null
+          ? '${calories!.toStringAsFixed(0)} ккал'
+          : '-- ккал',
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -686,8 +781,10 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
             ProfileHeader(
               name: name,
               location: country,
-              subtitle: 'Спортсмен',
+              subtitle: _athleteSubtitle,
               avatarUrl: userAvatarUrl.isNotEmpty ? userAvatarUrl : null,
+              coverUrl: userCoverUrl.isNotEmpty ? userCoverUrl : null,
+              coverPresetId: userCoverPreset,
               statPills: _statPills,
               onAvatarTap: () {
                 Navigator.of(context, rootNavigator: true).push(
@@ -696,20 +793,52 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
                   ),
                 );
               },
-              onSettings: () {
-                Navigator.of(context, rootNavigator: true).push(
-                  MaterialPageRoute(
-                    builder: (context) => const SettingsPage(),
-                  ),
-                );
+              onCoverTap: () async {
+                final changed = await Navigator.of(context, rootNavigator: true)
+                    .push<bool>(
+                      MaterialPageRoute(
+                        builder: (context) => const ProfileCoverPickerPage(),
+                      ),
+                    );
+                if (changed == true && mounted) {
+                  fetchUserInfo(force: true);
+                }
+              },
+              onSettings: () async {
+                final changed = await Navigator.of(context, rootNavigator: true)
+                    .push<bool>(
+                      MaterialPageRoute(
+                        builder: (context) => const SettingsPage(),
+                      ),
+                    );
+                if (changed == true && mounted) {
+                  fetchUserInfo(force: true);
+                }
               },
             ),
             ProfileTabBar(
               selected: _selectedTab,
               onChanged: (tab) {
                 setState(() => _selectedTab = tab);
-                if (tab == ProfileTab.history && !_workoutsLoaded) {
-                  _loadWorkouts();
+                if (tab == ProfileTab.events) {
+                  fetchStatistics(force: true);
+                  _loadStories(force: true);
+                  _loadMoments(force: true);
+                  _loadChallenges(force: true);
+                }
+                if (tab == ProfileTab.statistics) {
+                  fetchStatistics(force: true);
+                  if (!_workoutsLoaded) {
+                    _loadWorkouts();
+                  } else {
+                    _applyWorkoutBasedWeeklyStats();
+                  }
+                }
+                if (tab == ProfileTab.history) {
+                  _plannedWorkoutsKey.currentState?.reload(force: true);
+                  if (!_workoutsLoaded) {
+                    _loadWorkouts();
+                  }
                 }
                 if (tab == ProfileTab.achievements && _achievements.isEmpty) {
                   _loadAchievements();
@@ -728,6 +857,8 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
 
   Widget _buildTabContent() {
     switch (_selectedTab) {
+      case ProfileTab.events:
+        return _buildEventsTab();
       case ProfileTab.statistics:
         return _buildStatisticsTab();
       case ProfileTab.achievements:
@@ -737,45 +868,11 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
     }
   }
 
-  Widget _buildStatisticsTab() {
+  Widget _buildEventsTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        WeeklyActivityBarChart(
-          weeklyData: _weeklyActivityData,
-          isLoading: _weeklyStatsLoading,
-          totalLabel: _weeklyDistanceKm != null
-              ? 'За неделю: ${_weeklyDistanceKm!.toStringAsFixed(1)} км'
-              : 'За неделю: -- км',
-          changeLabel: _weekChangeLabel,
-        ),
-        const SizedBox(height: 20),
-        PlannedWorkoutsSection(
-          key: _plannedWorkoutsKey,
-          onOpenOnMap: (workout) => widget.onOpenPlannedWorkout?.call(workout),
-        ),
-        const SizedBox(height: 20),
-        const ProfileSectionHeader(title: 'Личные рекорды'),
-        const SizedBox(height: 12),
-        const Row(
-          children: [
-            Expanded(
-              child: PersonalRecordCard(
-                title: 'Самые быстрые 5 км',
-                value: '18:42',
-                badge: 'НОВЫЙ РЕКОРД',
-              ),
-            ),
-            SizedBox(width: 12),
-            Expanded(
-              child: PersonalRecordCard(
-                title: 'Самый длинный забег',
-                value: '42.2 км',
-                subtitle: 'Марафон',
-              ),
-            ),
-          ],
-        ),
+        ..._buildChallengesSection(),
         const SizedBox(height: 20),
         ProfileStoriesSection(
           stories: _myStories,
@@ -790,10 +887,34 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
           onAddTap: _openPublishMomentSheet,
           onLikeTap: _toggleMomentLike,
           onCommentTap: _openMomentComments,
+          onEditTap: _editMoment,
           onDeleteTap: _deleteMoment,
         ),
-        const SizedBox(height: 8),
-        ..._buildChallengesSection(),
+      ],
+    );
+  }
+
+  Widget _buildStatisticsTab() {
+    if (!_workoutsLoaded && !_workoutsLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadWorkouts());
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        WeeklyActivityBarChart(
+          weeklyData: _weeklyActivityData,
+          isLoading: _weeklyStatsLoading,
+          totalLabel: _weeklyDistanceKm != null
+              ? 'За неделю: ${_weeklyDistanceKm!.toStringAsFixed(1)} км'
+              : 'За неделю: -- км',
+          changeLabel: _weekChangeLabel,
+        ),
+        const SizedBox(height: 20),
+        ProfileStatisticsTab(
+          workouts: _myWorkouts,
+          isLoading: _workoutsLoading,
+        ),
       ],
     );
   }
@@ -863,13 +984,11 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
     ];
   }
 
-  List<WorkoutSummary> get _myWorkouts => _workouts
-      .where((workout) => !workout.isImported)
-      .toList(growable: false);
+  List<WorkoutSummary> get _myWorkouts =>
+      _workouts.where((workout) => !workout.isImported).toList(growable: false);
 
-  List<WorkoutSummary> get _importedWorkouts => _workouts
-      .where((workout) => workout.isImported)
-      .toList(growable: false);
+  List<WorkoutSummary> get _importedWorkouts =>
+      _workouts.where((workout) => workout.isImported).toList(growable: false);
 
   Widget _buildWorkoutActivityCard(
     WorkoutSummary workout, {
@@ -885,8 +1004,7 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
     String? detailLine;
     if (workout.tags.isNotEmpty) {
       detailLine = workout.tags.map((t) => '#$t').join(' ');
-    } else if (workout.description != null &&
-        workout.description!.isNotEmpty) {
+    } else if (workout.description != null && workout.description!.isNotEmpty) {
       detailLine = workout.description;
     } else if (workout.effortLevel != null) {
       detailLine = 'Нагрузка: ${workout.effortLevel} из 5';
@@ -911,18 +1029,19 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
     ];
 
     if (workout.calories != null) {
-      extraStats.add(
-        ActivityStat(
-          value: '${workout.calories}',
-          label: 'Ккал',
-        ),
-      );
+      extraStats.add(ActivityStat(value: '${workout.calories}', label: 'Ккал'));
     }
 
     return ActivityCard(
       title: workout.title,
       subtitle: subtitleParts.join(' · '),
       detailLine: detailLine,
+      ownerName: forHistory && workout.isImported
+          ? workout.sharedByUserName
+          : null,
+      ownerAvatarUrl: forHistory && workout.isImported
+          ? workout.sharedByAvatarUrl
+          : null,
       icon: forHistory && workout.isImported
           ? Icons.download_rounded
           : activity?.icon ?? Icons.directions_run,
@@ -948,7 +1067,8 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
       onLongPress: forHistory && !_historySelectionMode
           ? () => _enterHistorySelection(workout.id)
           : null,
-      onShowOnMap: !forHistory &&
+      onShowOnMap:
+          !forHistory &&
               widget.onShowRouteOnMap != null &&
               !_historySelectionMode
           ? () => widget.onShowRouteOnMap!(workout)
@@ -1009,26 +1129,15 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
     if (_selectedWorkoutIds.isEmpty || _workoutsDeleting) return;
 
     final count = _selectedWorkoutIds.length;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Удалить маршруты?'),
-        content: Text(
-          count == 1
-              ? 'Маршрут будет удалён с устройства без возможности восстановления.'
-              : 'Будет удалено маршрутов: $count. Это действие нельзя отменить.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Удалить маршруты?',
+      message: count == 1
+          ? 'Маршрут будет удалён с устройства без возможности восстановления.'
+          : 'Будет удалено маршрутов: $count. Это действие нельзя отменить.',
+      confirmLabel: 'Удалить',
+      destructive: true,
+      icon: Icons.delete_outline_rounded,
     );
     if (confirmed != true || !mounted) return;
 
@@ -1045,15 +1154,15 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
 
       if (!mounted) return;
       setState(() {
-      if (deleted > 0) {
-        _workouts.removeWhere((workout) => selectedIds.contains(workout.id));
-      } else {
-        // Убираем из списка локальные маршруты, даже если сервер не ответил.
-        _workouts.removeWhere(
-          (workout) =>
-              selectedIds.contains(workout.id) && workout.filePath.isNotEmpty,
-        );
-      }
+        if (deleted > 0) {
+          _workouts.removeWhere((workout) => selectedIds.contains(workout.id));
+        } else {
+          // Убираем из списка локальные маршруты, даже если сервер не ответил.
+          _workouts.removeWhere(
+            (workout) =>
+                selectedIds.contains(workout.id) && workout.filePath.isNotEmpty,
+          );
+        }
         _historySelectionMode = false;
         _selectedWorkoutIds.clear();
       });
@@ -1148,8 +1257,9 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
     }
 
     final recent = _achievementService.recentUnlocked(_achievements);
-    final unlockedCount =
-        _achievements.where((achievement) => achievement.unlocked).length;
+    final unlockedCount = _achievements
+        .where((achievement) => achievement.unlocked)
+        .length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1199,7 +1309,9 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
           runSpacing: 16,
           alignment: WrapAlignment.spaceAround,
           children: _achievements
-              .map((status) => _buildAchievementBadge(status, showHighlight: true))
+              .map(
+                (status) => _buildAchievementBadge(status),
+              )
               .toList(),
         ),
       ],
@@ -1209,22 +1321,21 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
   bool _achievementsLoadedOrLoading() =>
       _achievements.isNotEmpty || _achievementsLoading;
 
-  Widget _buildAchievementBadge(
-    AchievementStatus status, {
-    bool showHighlight = false,
-  }) {
+  Widget _buildAchievementBadge(AchievementStatus status) {
     return GestureDetector(
       onTap: () => _showAchievementDetails(status),
       child: AchievementBadge(
         icon: status.definition.icon,
         label: status.definition.title,
         locked: !status.unlocked,
-        highlighted: showHighlight && status.isNew,
+        showNewDot: _shouldShowAchievementDot(status),
       ),
     );
   }
 
-  void _showAchievementDetails(AchievementStatus status) {
+  Future<void> _showAchievementDetails(AchievementStatus status) async {
+    await _markAchievementSeen(status);
+    if (!mounted) return;
     AchievementDetailsSheet.show(context, status: status);
   }
 
@@ -1236,6 +1347,11 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        PlannedWorkoutsSection(
+          key: _plannedWorkoutsKey,
+          onOpenOnMap: (workout) => widget.onOpenPlannedWorkout?.call(workout),
+        ),
+        const SizedBox(height: 20),
         Row(
           children: [
             Expanded(
@@ -1246,7 +1362,9 @@ class ProfilePageState extends State<ProfilePage> with RouteAware {
             ),
             if (_workouts.isNotEmpty)
               TextButton(
-                onPressed: _workoutsDeleting ? null : _toggleHistorySelectionMode,
+                onPressed: _workoutsDeleting
+                    ? null
+                    : _toggleHistorySelectionMode,
                 child: Text(
                   _historySelectionMode ? 'Готово' : 'Выбрать',
                   style: profileLinkStyle(),

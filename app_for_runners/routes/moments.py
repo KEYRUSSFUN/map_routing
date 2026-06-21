@@ -4,8 +4,9 @@ from flask import Blueprint, jsonify, request, send_file
 from sqlalchemy import func, or_
 
 from extensions import db
-from models import Friendship, Moment, MomentComment, MomentLike, User, UserInfo
+from models import Friendship, Moment, MomentComment, MomentLike, User, UserInfo, Club
 from utils.auth import token_required
+from utils.club_access import can_view_moment, feed_club_ids, friend_ids
 from utils.moment_storage import (
     delete_moment_photo,
     moment_photo_file_path,
@@ -21,26 +22,27 @@ def _utcnow():
 
 
 def _friend_ids(user_id):
-    rows = Friendship.query.filter(
-        Friendship.status == 'accepted',
-        or_(
-            Friendship.user_id == user_id,
-            Friendship.friend_id == user_id,
-        ),
-    ).all()
-    friend_ids = set()
-    for row in rows:
-        if row.user_id == user_id:
-            friend_ids.add(row.friend_id)
-        else:
-            friend_ids.add(row.user_id)
-    return friend_ids
+    return friend_ids(user_id)
 
 
 def _can_view_user_moments(viewer_id, owner_id):
     if viewer_id == owner_id:
         return True
     return owner_id in _friend_ids(viewer_id)
+
+
+def _clubs_by_id(club_ids):
+    if not club_ids:
+        return {}
+    clubs = Club.query.filter(Club.id.in_(club_ids)).all()
+    return {club.id: club for club in clubs}
+
+
+def _club_avatar_url(club):
+    if not club or not club.avatar_filename:
+        return None
+    from flask import url_for
+    return url_for('clubs.get_club_avatar', club_id=club.id)
 
 
 def _photo_url(moment):
@@ -88,10 +90,20 @@ def _engagement_maps(moment_ids, viewer_id):
     return like_counts, viewer_likes, comment_counts
 
 
-def _serialize_moment(moment, *, viewer_id, users_by_id, like_counts, viewer_likes, comment_counts):
+def _serialize_moment(
+    moment,
+    *,
+    viewer_id,
+    users_by_id,
+    like_counts,
+    viewer_likes,
+    comment_counts,
+    clubs_by_id=None,
+):
     user = users_by_id.get(moment.user_id)
     info = user.user_info if user else None
-    return {
+    club = (clubs_by_id or {}).get(moment.club_id) if moment.club_id else None
+    payload = {
         'id': moment.id,
         'user_id': moment.user_id,
         'user_name': info.name if info else 'Пользователь',
@@ -103,13 +115,20 @@ def _serialize_moment(moment, *, viewer_id, users_by_id, like_counts, viewer_lik
         'comments_count': int(comment_counts.get(moment.id, 0)),
         'liked_by_me': moment.id in viewer_likes,
         'is_me': moment.user_id == viewer_id,
+        'club_id': moment.club_id,
+        'club_title': club.title if club else None,
+        'club_avatar_url': _club_avatar_url(club) if club else None,
+        'is_club_post': moment.club_id is not None,
     }
+    return payload
 
 
 def _serialize_moments(moments, viewer_id):
     moment_ids = [moment.id for moment in moments]
     user_ids = {moment.user_id for moment in moments}
+    club_ids = {moment.club_id for moment in moments if moment.club_id}
     users_by_id = _user_info_map(user_ids)
+    clubs_by_id = _clubs_by_id(club_ids)
     like_counts, viewer_likes, comment_counts = _engagement_maps(moment_ids, viewer_id)
     return [
         _serialize_moment(
@@ -119,6 +138,7 @@ def _serialize_moments(moments, viewer_id):
             like_counts=like_counts,
             viewer_likes=viewer_likes,
             comment_counts=comment_counts,
+            clubs_by_id=clubs_by_id,
         )
         for moment in moments
     ]
@@ -137,11 +157,13 @@ def get_moments_feed(user_id):
     page = max(request.args.get('page', 1, type=int), 1)
     per_page = min(max(request.args.get('per_page', 20, type=int), 1), 50)
     visible_ids = {user_id, *_friend_ids(user_id)}
+    member_club_ids = feed_club_ids(user_id)
 
-    query = (
-        Moment.query.filter(Moment.user_id.in_(visible_ids))
-        .order_by(Moment.created_at.desc())
-    )
+    filters = [Moment.user_id.in_(visible_ids)]
+    if member_club_ids:
+        filters.append(Moment.club_id.in_(member_club_ids))
+
+    query = Moment.query.filter(or_(*filters)).order_by(Moment.created_at.desc())
     total = query.count()
     moments = query.offset((page - 1) * per_page).limit(per_page).all()
 
@@ -210,6 +232,47 @@ def create_moment(user_id):
     return jsonify(payload), 201
 
 
+@moments_bp.route('/api/moments/<int:moment_id>', methods=['PUT'])
+@token_required
+def update_moment(user_id, moment_id):
+    moment = _get_moment_or_404(moment_id)
+    if not moment:
+        return jsonify({'error': 'Moment not found'}), 404
+    if moment.user_id != user_id:
+        return jsonify({'error': 'Access denied'}), 403
+
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        payload = request.form
+    else:
+        payload = request.get_json(silent=True) or {}
+
+    if 'text' in payload:
+        text = (payload.get('text') or '').strip() or None
+        if text and len(text) > 2000:
+            return jsonify({'error': 'Text is too long'}), 400
+        moment.text = text
+
+    remove_photo = str(payload.get('remove_photo', '')).lower() in {'1', 'true', 'yes'}
+
+    if 'photo' in request.files and request.files['photo'].filename:
+        try:
+            if moment.photo_filename:
+                delete_moment_photo(moment)
+            filename, _ = save_moment_photo(user_id, request.files['photo'])
+            moment.photo_filename = filename
+        except ValueError as exc:
+            return jsonify({'error': str(exc)}), 400
+    elif remove_photo and moment.photo_filename:
+        delete_moment_photo(moment)
+        moment.photo_filename = None
+
+    if not moment.text and not moment.photo_filename:
+        return jsonify({'error': 'Add text or photo'}), 400
+
+    db.session.commit()
+    return jsonify(_serialize_moments([moment], user_id)[0]), 200
+
+
 @moments_bp.route('/api/moments/<int:moment_id>', methods=['DELETE'])
 @token_required
 def delete_moment(user_id, moment_id):
@@ -231,7 +294,7 @@ def toggle_moment_like(user_id, moment_id):
     moment = _get_moment_or_404(moment_id)
     if not moment:
         return jsonify({'error': 'Moment not found'}), 404
-    if not _can_view_user_moments(user_id, moment.user_id):
+    if not can_view_moment(user_id, moment):
         return jsonify({'error': 'Access denied'}), 403
 
     existing = MomentLike.query.filter_by(
@@ -258,7 +321,7 @@ def get_moment_comments(user_id, moment_id):
     moment = _get_moment_or_404(moment_id)
     if not moment:
         return jsonify({'error': 'Moment not found'}), 404
-    if not _can_view_user_moments(user_id, moment.user_id):
+    if not can_view_moment(user_id, moment):
         return jsonify({'error': 'Access denied'}), 403
 
     comments = (
@@ -292,7 +355,7 @@ def add_moment_comment(user_id, moment_id):
     moment = _get_moment_or_404(moment_id)
     if not moment:
         return jsonify({'error': 'Moment not found'}), 404
-    if not _can_view_user_moments(user_id, moment.user_id):
+    if not can_view_moment(user_id, moment):
         return jsonify({'error': 'Access denied'}), 403
 
     data = request.get_json(silent=True) or {}

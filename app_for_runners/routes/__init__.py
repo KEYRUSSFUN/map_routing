@@ -9,6 +9,7 @@ def register_blueprints(app):
     from .challenges import challenges_bp
     from .stories import stories_bp
     from .moments import moments_bp
+    from .clubs import clubs_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(friends_bp)
@@ -20,5 +21,6 @@ def register_blueprints(app):
     app.register_blueprint(challenges_bp)
     app.register_blueprint(stories_bp)
     app.register_blueprint(moments_bp)
+    app.register_blueprint(clubs_bp)
 
 __all__ = ['register_blueprints']

@@ -6,6 +6,7 @@ import 'package:map_routing/data/services/app_settings_service.dart';
 import 'package:map_routing/data/services/user_service.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
 import 'package:map_routing/features/profile/presentation/edit_profile.dart';
+import 'package:map_routing/features/profile/presentation/profile_cover_picker_page.dart';
 import 'package:map_routing/features/profile/presentation/profile_ui.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -103,6 +104,26 @@ class _SettingsPageState extends State<SettingsPage> {
                             builder: (_) => const EditProfilePage(),
                           ),
                         );
+                      },
+                      trailing: const Icon(
+                        Icons.chevron_right,
+                        color: ProfileColors.body,
+                      ),
+                    ),
+                    _SettingsTile(
+                      icon: Icons.image_outlined,
+                      title: 'Фон профиля',
+                      subtitle: 'Обложка в шапке профиля',
+                      onTap: () async {
+                        final changed = await Navigator.push<bool>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ProfileCoverPickerPage(),
+                          ),
+                        );
+                        if (changed == true && mounted) {
+                          Navigator.pop(context, true);
+                        }
                       },
                       trailing: const Icon(
                         Icons.chevron_right,

@@ -2,14 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:map_routing/core/widgets/app_confirm_dialog.dart';
 import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:map_routing/data/models/planned_workout.dart';
-import 'package:map_routing/data/models/track_point.dart';
+import 'package:map_routing/data/services/gpx_workout_service.dart';
 import 'package:map_routing/data/services/planned_workout_service.dart';
 import 'package:map_routing/data/services/user_workout_storage.dart';
 import 'package:map_routing/features/profile/presentation/create_planned_workout_page.dart';
 import 'package:map_routing/features/profile/presentation/profile_ui.dart';
-import 'package:map_routing/features/profile/widgets/route_polyline_preview.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PlannedWorkoutsSection extends StatefulWidget {
@@ -88,22 +88,13 @@ class PlannedWorkoutsSectionState extends State<PlannedWorkoutsSection> {
   }
 
   Future<void> _confirmDelete(PlannedWorkout workout) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Удалить тренировку?'),
-        content: Text('«${workout.title}» будет удалена из плана.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Удалить тренировку?',
+      message: '«${workout.title}» будет удалена из плана.',
+      confirmLabel: 'Удалить',
+      destructive: true,
+      icon: Icons.delete_outline_rounded,
     );
     if (confirmed == true) {
       await _deleteWorkout(workout);
@@ -219,13 +210,9 @@ class _PlannedWorkoutCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final points = workout.displayRoutePoints
-        .map(
-          (p) => TrackPoint(latitude: p.latitude, longitude: p.longitude),
-        )
-        .toList();
     final countdown = formatPlannedWorkoutCountdown(workout.scheduledAt);
     final isDue = workout.isDue;
+    final duration = Duration(seconds: workout.estimatedDurationSeconds);
 
     return SizedBox(
       width: 240,
@@ -236,65 +223,197 @@ class _PlannedWorkoutCard extends StatelessWidget {
           onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(18),
           child: Ink(
-            decoration: profileElevatedDecoration(
-              backgroundColor: ProfileColors.cardBg,
-              radius: 18,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE3E8EE)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x12000000),
+                  blurRadius: 14,
+                  offset: Offset(0, 5),
+                ),
+              ],
             ),
             padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                RoutePolylinePreview(
-                  points: points,
-                  height: 88,
-                  borderRadius: 12,
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  workout.activityType.labelRu,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: profileTitleStyle(size: 14),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  formatPlannedWorkoutSchedule(workout.scheduledAt),
-                  style: profileSubtitleStyle(),
-                ),
-                const Spacer(),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      isDue ? Icons.play_circle_outline : Icons.schedule,
-                      size: 16,
-                      color: isDue
-                          ? ProfileColors.orange
-                          : ProfileColors.primaryGreen,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        countdown,
-                        style: GoogleFonts.lexendDeca(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: isDue
-                              ? ProfileColors.orange
-                              : ProfileColors.primaryGreen,
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          colors: [
+                            ProfileColors.primaryGreen,
+                            Color(0xFF00C853),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: ProfileColors.primaryGreen.withValues(
+                              alpha: 0.22,
+                            ),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        workout.activityType.icon,
+                        color: Colors.white,
+                        size: 22,
                       ),
                     ),
-                    Text(
-                      '~${workout.estimatedCalories} ккал',
-                      style: profileSubtitleStyle(),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            workout.title.trim().isNotEmpty
+                                ? workout.title.trim()
+                                : workout.activityType.labelRu,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: profileTitleStyle(size: 15),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            formatPlannedWorkoutSchedule(workout.scheduledAt),
+                            style: profileSubtitleStyle(),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF7F9FA),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _PlannedWorkoutMetric(
+                          icon: Icons.straighten_rounded,
+                          label: WorkoutFormatters.formatDistanceKm(
+                            workout.distanceMeters,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        width: 1,
+                        height: 24,
+                        color: const Color(0xFFE3E8EE),
+                      ),
+                      Expanded(
+                        child: _PlannedWorkoutMetric(
+                          icon: Icons.timer_outlined,
+                          label: duration.inMinutes > 0
+                              ? WorkoutFormatters.formatDurationLong(duration)
+                              : '—',
+                        ),
+                      ),
+                      Container(
+                        width: 1,
+                        height: 24,
+                        color: const Color(0xFFE3E8EE),
+                      ),
+                      Expanded(
+                        child: _PlannedWorkoutMetric(
+                          icon: Icons.local_fire_department_outlined,
+                          label: '${workout.estimatedCalories}',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isDue
+                        ? ProfileColors.orange.withValues(alpha: 0.08)
+                        : ProfileColors.primaryGreen.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isDue ? Icons.play_circle_outline : Icons.schedule,
+                        size: 16,
+                        color: isDue
+                            ? ProfileColors.orange
+                            : ProfileColors.primaryGreen,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          countdown,
+                          style: GoogleFonts.lexendDeca(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: isDue
+                                ? ProfileColors.orange
+                                : ProfileColors.primaryGreen,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PlannedWorkoutMetric extends StatelessWidget {
+  const _PlannedWorkoutMetric({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(icon, size: 14, color: ProfileColors.body),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: GoogleFonts.lexendDeca(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: ProfileColors.title,
+          ),
+        ),
+      ],
     );
   }
 }

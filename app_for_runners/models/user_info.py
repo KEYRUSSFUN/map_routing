@@ -11,5 +11,8 @@ class UserInfo(db.Model):
     country = db.Column(db.String(100), nullable=True)
     avatar_filename = db.Column(db.String(255), nullable=True)
     avatar_updated_at = db.Column(db.DateTime, nullable=True)
+    cover_preset = db.Column(db.String(50), nullable=True)
+    cover_filename = db.Column(db.String(255), nullable=True)
+    cover_updated_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     user = db.relationship("User", back_populates="user_info")

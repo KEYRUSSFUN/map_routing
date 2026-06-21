@@ -7,6 +7,7 @@ import 'package:map_routing/core/map/mapkit_bootstrap.dart';
 import 'package:map_routing/data/geometry_provider.dart';
 import 'package:map_routing/data/models/track_point.dart';
 import 'package:map_routing/data/services/app_settings_service.dart';
+import 'package:map_routing/features/map/presentation/widgets/map_route_marker_icons.dart';
 import 'package:map_routing/features/profile/presentation/profile_ui.dart';
 import 'package:map_routing/shared/utils/polyline_extensions.dart';
 import 'package:yandex_maps_mapkit/image.dart' as image_provider;
@@ -56,28 +57,32 @@ void drawRouteOnMapWindow(
   MapObjectCollection? placemarks,
   MapObjectCollection? routes,
   bool hideEndpoints = false,
+  image_provider.ImageProvider? startIcon,
+  image_provider.ImageProvider? finishIcon,
 }) {
   if (points.length < 2) return;
 
   final routeCollection = routes ?? mapWindow.map.mapObjects.addCollection();
   final placemarkCollection = placemarks ?? mapWindow.map.mapObjects.addCollection();
 
-  if (!hideEndpoints) {
+  if (!hideEndpoints && startIcon != null && finishIcon != null) {
     final start = placemarkCollection.addPlacemark()..geometry = points.first;
-    start.setIcon(
-      image_provider.ImageProvider.fromImageProvider(
-        const AssetImage('assets/start_point.png'),
+    start.setIcon(startIcon);
+    start.setIconStyle(
+      const IconStyle(
+        scale: MapRouteMarkerIcons.startIconScale,
+        zIndex: 120,
       ),
     );
-    start.setIconStyle(const IconStyle(scale: 1.0, zIndex: 20.0));
 
     final finish = placemarkCollection.addPlacemark()..geometry = points.last;
-    finish.setIcon(
-      image_provider.ImageProvider.fromImageProvider(
-        const AssetImage('assets/ic_finish_point.png'),
+    finish.setIcon(finishIcon);
+    finish.setIconStyle(
+      const IconStyle(
+        scale: MapRouteMarkerIcons.finishIconScale,
+        zIndex: 120,
       ),
     );
-    finish.setIconStyle(const IconStyle(scale: 1.5, zIndex: 20.0));
   }
 
   routeCollection
@@ -85,6 +90,21 @@ void drawRouteOnMapWindow(
       .applyMainRouteStyle();
 
   mapWindow.map.move(cameraPositionForRoute(points));
+}
+
+Future<({
+  image_provider.ImageProvider start,
+  image_provider.ImageProvider finish,
+})> loadRouteMarkerProviders() async {
+  final results = await Future.wait([
+    MapRouteMarkerIcons.startPointPng(),
+    MapRouteMarkerIcons.finishPointPng(),
+  ]);
+
+  return (
+    start: image_provider.ImageProvider.fromImageProvider(MemoryImage(results[0])),
+    finish: image_provider.ImageProvider.fromImageProvider(MemoryImage(results[1])),
+  );
 }
 
 class WorkoutRouteMapPreview extends StatefulWidget {
@@ -112,14 +132,26 @@ class WorkoutRouteMapPreview extends StatefulWidget {
 class _WorkoutRouteMapPreviewState extends State<WorkoutRouteMapPreview> {
   List<Point> _routePoints = const [];
   bool _loadingPoints = false;
+  image_provider.ImageProvider? _startIcon;
+  image_provider.ImageProvider? _finishIcon;
 
   @override
   void initState() {
     super.initState();
     _routePoints = trackPointsToMapPoints(widget.points);
+    unawaited(_loadMarkerIcons());
     if (_routePoints.length < 2) {
       unawaited(_loadPointsFromFile());
     }
+  }
+
+  Future<void> _loadMarkerIcons() async {
+    final icons = await loadRouteMarkerProviders();
+    if (!mounted) return;
+    setState(() {
+      _startIcon = icons.start;
+      _finishIcon = icons.finish;
+    });
   }
 
   @override
@@ -170,6 +202,14 @@ class _WorkoutRouteMapPreviewState extends State<WorkoutRouteMapPreview> {
       );
     }
 
+    if (_startIcon == null || _finishIcon == null) {
+      return _RoutePlaceholder(
+        height: widget.height,
+        borderRadius: widget.borderRadius,
+        loading: true,
+      );
+    }
+
     final map = FutureBuilder<void>(
       future: MapkitBootstrap.ensureInitialized(),
       builder: (context, snapshot) {
@@ -200,6 +240,8 @@ class _WorkoutRouteMapPreviewState extends State<WorkoutRouteMapPreview> {
                   points: _routePoints,
                   hideEndpoints:
                       AppSettingsService.instance.hideMapEndpoints,
+                  startIcon: _startIcon,
+                  finishIcon: _finishIcon,
                 );
               },
             ),
@@ -243,10 +285,33 @@ class _WorkoutRouteMapPreviewState extends State<WorkoutRouteMapPreview> {
   }
 }
 
-class WorkoutRouteMapPage extends StatelessWidget {
+class WorkoutRouteMapPage extends StatefulWidget {
   const WorkoutRouteMapPage({super.key, required this.points});
 
   final List<Point> points;
+
+  @override
+  State<WorkoutRouteMapPage> createState() => _WorkoutRouteMapPageState();
+}
+
+class _WorkoutRouteMapPageState extends State<WorkoutRouteMapPage> {
+  image_provider.ImageProvider? _startIcon;
+  image_provider.ImageProvider? _finishIcon;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadIcons());
+  }
+
+  Future<void> _loadIcons() async {
+    final icons = await loadRouteMarkerProviders();
+    if (!mounted) return;
+    setState(() {
+      _startIcon = icons.start;
+      _finishIcon = icons.finish;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -257,16 +322,20 @@ class WorkoutRouteMapPage extends StatelessWidget {
           FutureBuilder<void>(
             future: MapkitBootstrap.ensureInitialized(),
             builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) {
+              if (snapshot.connectionState != ConnectionState.done ||
+                  _startIcon == null ||
+                  _finishIcon == null) {
                 return const Center(child: CircularProgressIndicator());
               }
               return FlutterMapWidget(
                 onMapCreated: (mapWindow) {
                   drawRouteOnMapWindow(
                     mapWindow,
-                    points: points,
+                    points: widget.points,
                     hideEndpoints:
                         AppSettingsService.instance.hideMapEndpoints,
+                    startIcon: _startIcon,
+                    finishIcon: _finishIcon,
                   );
                 },
               );

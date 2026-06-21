@@ -7,6 +7,7 @@ from services.jwt_service import verify_jwt
 from utils.presence import activate_user_presence, deactivate_user_presence
 from utils.datetime_utils import utc_isoformat
 from utils.user_avatar import avatar_url_for
+from utils.chat_message_status import outgoing_message_status, touch_member_received
 from sqlalchemy.orm import joinedload
 
 
@@ -25,6 +26,18 @@ def _room_name(chat_id):
 
 def _user_room(user_id):
     return f'user_{user_id}'
+
+
+def _emit_member_state_updated(socketio, chat_id, user_id, read_at=None, received_at=None):
+    payload = {
+        'chat_id': chat_id,
+        'user_id': user_id,
+    }
+    if read_at is not None:
+        payload['read_at'] = utc_isoformat(read_at)
+    if received_at is not None:
+        payload['received_at'] = utc_isoformat(received_at)
+    socketio.emit('member_state_updated', payload, room=_room_name(chat_id))
 
 
 def init_socket_handlers(socketio):
@@ -115,8 +128,58 @@ def init_socket_handlers(socketio):
             'message_type': 'text',
             'timestamp': utc_isoformat(new_message.timestamp),
             'reactions': [],
+            'status': outgoing_message_status(new_message, chat_id, user_id),
         }
         emit('new_message', message_data, room=_room_name(chat_id))
+
+    @socketio.on('message_delivered')
+    def handle_message_delivered(data):
+        token = data.get('token')
+        user_id = verify_jwt(token)
+        if not user_id:
+            emit('error', {'message': 'Invalid token'})
+            return
+
+        chat_id = _parse_chat_id(data.get('chat_id'))
+        if chat_id is None:
+            emit('error', {'message': 'Invalid chat_id'})
+            return
+
+        association = UserGroupChatAssociation.query.filter_by(
+            user_id=user_id, chat_id=chat_id
+        ).first()
+        if association is None:
+            emit('error', {'message': 'Access denied'})
+            return
+
+        message_id = data.get('message_id')
+        received_at = None
+        if message_id is not None:
+            try:
+                message_id = int(message_id)
+            except (TypeError, ValueError):
+                message_id = None
+        if message_id is not None:
+            message = GroupMessage.query.filter_by(
+                id=message_id,
+                chat_id=chat_id,
+            ).first()
+            if message is not None and message.sender_id != user_id:
+                touch_member_received(association, message.timestamp)
+                received_at = association.last_received_at
+        else:
+            from datetime import datetime, timezone
+
+            received_at = datetime.now(timezone.utc)
+            touch_member_received(association, received_at)
+
+        db.session.commit()
+        _emit_member_state_updated(
+            socketio,
+            chat_id,
+            user_id,
+            received_at=received_at or association.last_received_at,
+        )
 
     @socketio.on('typing')
     def handle_typing(data):

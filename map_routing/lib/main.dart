@@ -161,6 +161,8 @@ class _MapkitFlutterAppState extends State<MapkitFlutterApp> {
 
   void _onMapWorkoutSaved() {
     profilePageKey.currentState?.refreshData(force: true);
+    unawaited(HomePageController.instance.refresh(force: true));
+    groupChatsPageKey.currentState?.refreshChallenges(force: true);
   }
 
   void _mapWorkoutUiChanged({

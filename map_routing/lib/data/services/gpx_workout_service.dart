@@ -113,6 +113,38 @@ class GpxWorkoutService {
     return workouts;
   }
 
+  Future<List<WorkoutSummary>> loadRemoteUserWorkouts(
+    String userId, {
+    double? userWeightKg,
+    int? userAge,
+  }) async {
+    try {
+      final backendRoutes =
+          await _routeService.fetchUserRoutes(userId: userId);
+      final workouts = <WorkoutSummary>[];
+      for (final route in backendRoutes) {
+        try {
+          final summary = parseBackendRoute(
+            route,
+            userWeightKg: userWeightKg,
+            userAge: userAge,
+          );
+          if (summary != null && summary.points.length >= 2) {
+            workouts.add(summary);
+          }
+        } catch (_) {}
+      }
+      workouts.sort((a, b) {
+        final aDate = a.startedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bDate = b.startedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bDate.compareTo(aDate);
+      });
+      return workouts;
+    } catch (_) {
+      return [];
+    }
+  }
+
   Future<bool> deleteWorkout(
     WorkoutSummary workout, {
     bool notify = true,
@@ -490,6 +522,9 @@ class GpxWorkoutService {
     WorkoutSummary? precomputedSummary,
     double? userWeightKg,
     int? userAge,
+    String? sharedByUserId,
+    String? sharedByUserName,
+    String? sharedByAvatarUrl,
   }) async {
     final summary = precomputedSummary ??
         await _readGpxSummary(
@@ -517,6 +552,9 @@ class GpxWorkoutService {
       notes: snapshot?.notes ?? '',
       photoUrl: snapshot?.photoUrl,
       photoPath: localPhotoPath,
+      sharedByUserId: sharedByUserId,
+      sharedByUserName: sharedByUserName,
+      sharedByAvatarUrl: sharedByAvatarUrl,
     );
     await WorkoutMetadata.saveToFile(gpxPath, metadata);
   }
@@ -775,6 +813,9 @@ class GpxWorkoutService {
       privacy: isImported ? null : metadata.privacy,
       source: _resolveSource(filePath, metadata),
       backendRouteId: isImported ? null : metadata.backendRouteId,
+      sharedByUserId: metadata.sharedByUserId,
+      sharedByUserName: metadata.sharedByUserName,
+      sharedByAvatarUrl: metadata.sharedByAvatarUrl,
     );
   }
 

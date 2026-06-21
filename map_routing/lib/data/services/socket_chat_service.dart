@@ -397,6 +397,29 @@ class SocketChatService {
     });
   }
 
+  Future<void> acknowledgeMessageDelivery({
+    required String chatId,
+    String? messageId,
+  }) async {
+    await _ensureTokenSynced(reconnectOnChange: true);
+
+    if (!isConnected) {
+      if (_baseUrl != null) {
+        await ensureConnected(
+          _baseUrl!,
+          wait: false,
+        );
+      }
+    }
+    if (_socket == null || !_socket!.connected || _token == null) return;
+
+    _socket!.emit('message_delivered', {
+      'chat_id': chatId,
+      if (messageId != null && messageId.isNotEmpty) 'message_id': messageId,
+      'token': _token,
+    });
+  }
+
   void on(String event, void Function(dynamic) callback) {
     final callbacks = _listeners.putIfAbsent(event, () => []);
     if (!callbacks.contains(callback)) {

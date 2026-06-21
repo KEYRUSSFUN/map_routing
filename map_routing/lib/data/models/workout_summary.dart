@@ -68,6 +68,9 @@ class WorkoutSummary {
     this.privacy,
     this.source = WorkoutSource.tracked,
     this.backendRouteId,
+    this.sharedByUserId,
+    this.sharedByUserName,
+    this.sharedByAvatarUrl,
   });
 
   final String id;
@@ -93,6 +96,9 @@ class WorkoutSummary {
   final WorkoutPrivacy? privacy;
   final WorkoutSource source;
   final int? backendRouteId;
+  final String? sharedByUserId;
+  final String? sharedByUserName;
+  final String? sharedByAvatarUrl;
 
   bool get isImported => source == WorkoutSource.imported;
 
@@ -122,6 +128,9 @@ class WorkoutSummary {
     WorkoutPrivacy? privacy,
     WorkoutSource? source,
     int? backendRouteId,
+    String? sharedByUserId,
+    String? sharedByUserName,
+    String? sharedByAvatarUrl,
   }) {
     return WorkoutSummary(
       id: id ?? this.id,
@@ -147,6 +156,9 @@ class WorkoutSummary {
       privacy: privacy ?? this.privacy,
       source: source ?? this.source,
       backendRouteId: backendRouteId ?? this.backendRouteId,
+      sharedByUserId: sharedByUserId ?? this.sharedByUserId,
+      sharedByUserName: sharedByUserName ?? this.sharedByUserName,
+      sharedByAvatarUrl: sharedByAvatarUrl ?? this.sharedByAvatarUrl,
     );
   }
 }

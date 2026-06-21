@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:map_routing/core/network/backend_urls.dart';
 import 'package:map_routing/core/network/config.dart';
 import 'package:map_routing/data/models/moment.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MomentService {
   MomentService({String? baseUrl, required this.token})
@@ -44,6 +45,19 @@ class MomentService {
 
     if (response.statusCode != 200) {
       throw Exception('Failed to load moments: ${response.statusCode}');
+    }
+
+    return _parseMomentList(response.body);
+  }
+
+  Future<List<MomentItem>> fetchUserMoments(int userId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/moments/user/$userId'),
+      headers: _headers,
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to load user moments: ${response.statusCode}');
     }
 
     return _parseMomentList(response.body);
@@ -183,6 +197,48 @@ class MomentService {
     }
   }
 
+  Future<MomentItem> updateMoment({
+    required int momentId,
+    required String text,
+    File? photo,
+    bool removePhoto = false,
+  }) async {
+    final request = http.MultipartRequest(
+      'PUT',
+      Uri.parse('$baseUrl/api/moments/$momentId'),
+    );
+    request.headers['Authorization'] = token;
+    request.fields['text'] = text.trim();
+    if (removePhoto) {
+      request.fields['remove_photo'] = 'true';
+    }
+    if (photo != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath('photo', photo.path),
+      );
+    }
+
+    final streamedResponse = await request.send();
+    final body = await streamedResponse.stream.bytesToString();
+
+    if (streamedResponse.statusCode != 200) {
+      String message = 'Failed to update moment (${streamedResponse.statusCode})';
+      try {
+        final data = jsonDecode(body);
+        if (data is Map && data['error'] != null) {
+          message = data['error'].toString();
+        }
+      } catch (_) {}
+      throw Exception(message);
+    }
+
+    final data = jsonDecode(body);
+    if (data is! Map<String, dynamic>) {
+      throw Exception('Invalid update response');
+    }
+    return _parseMomentItem(data);
+  }
+
   MomentFeedPage _parseFeedPage(Map<String, dynamic> json) {
     final page = MomentFeedPage.fromJson(json);
     return MomentFeedPage(
@@ -221,6 +277,17 @@ class MomentService {
       commentsCount: moment.commentsCount,
       likedByMe: moment.likedByMe,
       isMe: moment.isMe,
+      clubId: moment.clubId,
+      clubTitle: moment.clubTitle,
+      clubAvatarUrl: absoluteBackendUrl(moment.clubAvatarUrl),
+      isClubPost: moment.isClubPost,
     );
+  }
+
+  static Future<MomentService?> fromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('jwt_token');
+    if (token == null || token.isEmpty) return null;
+    return MomentService(token: token);
   }
 }

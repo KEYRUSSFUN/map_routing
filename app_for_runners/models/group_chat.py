@@ -7,6 +7,7 @@ class UserGroupChatAssociation(db.Model):
     chat_id = db.Column(db.Integer, db.ForeignKey('group_chat.id'), primary_key=True)
     joined_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     last_read_at = db.Column(db.DateTime, nullable=True)
+    last_received_at = db.Column(db.DateTime, nullable=True)
     invitation_seen_at = db.Column(db.DateTime, nullable=True)
     notifications_muted = db.Column(db.Boolean, nullable=False, default=False)
 

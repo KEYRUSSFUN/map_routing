@@ -46,11 +46,6 @@ class AchievementDetailsSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final unlocked = status.unlocked;
-    final accent =
-        unlocked ? ProfileColors.orange : ProfileColors.body.withValues(alpha: 0.5);
-    final iconBg = unlocked
-        ? ProfileColors.orange.withValues(alpha: 0.12)
-        : const Color(0xFFF0F0F0);
 
     return DecoratedBox(
       decoration: const BoxDecoration(
@@ -94,24 +89,10 @@ class AchievementDetailsSheet extends StatelessWidget {
                   ],
                 ),
               ),
-              Container(
-                width: 88,
-                height: 88,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: iconBg,
-                  border: Border.all(
-                    color: unlocked
-                        ? ProfileColors.orangeBorder
-                        : const Color(0xFFE0E0E0),
-                    width: unlocked ? 2.5 : 1.5,
-                  ),
-                ),
-                child: Icon(
-                  unlocked ? status.definition.icon : Icons.lock_outline_rounded,
-                  color: accent,
-                  size: 40,
-                ),
+              AchievementMedallion(
+                icon: status.definition.icon,
+                locked: !unlocked,
+                size: 88,
               ),
               const SizedBox(height: 16),
               Text(

@@ -19,9 +19,7 @@ class RegistrationService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/register'),
-        headers: const {
-          'Content-Type': 'application/json; charset=UTF-8',
-        },
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
         body: jsonEncode(<String, String>{
           'email': email.trim(),
           'password': password,
@@ -39,11 +37,14 @@ class RegistrationService {
         }
       }
 
-      debugPrint('Ошибка регистрации: ${response.statusCode}, ${response.body}');
+      debugPrint(
+        'Ошибка регистрации: ${response.statusCode}, ${response.body}',
+      );
       return 'Ошибка регистрации. Попробуйте снова.';
     } catch (e) {
       debugPrint('Ошибка соединения: $e');
-      return userFacingNetworkError(e) ?? 'Ошибка соединения. Попробуйте снова.';
+      return userFacingNetworkError(e) ??
+          'Ошибка соединения. Попробуйте снова.';
     }
   }
 
@@ -52,11 +53,13 @@ class RegistrationService {
     String password,
   ) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/login'),
-        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
-        body: jsonEncode({'email': email, 'password': password}),
-      ).timeout(const Duration(seconds: 20));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/login'),
+            headers: const {'Content-Type': 'application/json; charset=UTF-8'},
+            body: jsonEncode({'email': email, 'password': password}),
+          )
+          .timeout(const Duration(seconds: 20));
 
       if (response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
@@ -79,7 +82,127 @@ class RegistrationService {
       debugPrint('Login error: $e');
       return (
         token: null,
-        error: userFacingNetworkError(e) ?? 'Ошибка соединения. Попробуйте снова.',
+        error:
+            userFacingNetworkError(e) ?? 'Ошибка соединения. Попробуйте снова.',
+      );
+    }
+  }
+
+  Future<
+      ({
+        String? message,
+        String? resetCode,
+        bool emailSent,
+        bool accountExists,
+        bool suggestRegistration,
+        String? error,
+      })> requestPasswordReset(String email) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/forgot-password'),
+            headers: const {'Content-Type': 'application/json; charset=UTF-8'},
+            body: jsonEncode({'email': email.trim()}),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      final responseData = decodeJsonObject(response.body);
+      if (responseData == null) {
+        return (
+          message: null,
+          resetCode: null,
+          emailSent: false,
+          accountExists: true,
+          suggestRegistration: false,
+          error: userFacingApiError(
+            statusCode: response.statusCode,
+            body: response.body,
+            fallback: 'Не удалось отправить код',
+          ),
+        );
+      }
+
+      final message = responseData['message']?.toString();
+      final emailSent = responseData['email_sent'] == true;
+      final accountExists = responseData['account_exists'] != false;
+      final suggestRegistration =
+          response.statusCode == 404 || responseData['account_exists'] == false;
+
+      if (response.statusCode == 200 && responseData['success'] == true) {
+        return (
+          message: message,
+          resetCode: responseData['reset_code']?.toString(),
+          emailSent: emailSent,
+          accountExists: accountExists,
+          suggestRegistration: false,
+          error: null,
+        );
+      }
+
+      return (
+        message: message,
+        resetCode: null,
+        emailSent: false,
+        accountExists: accountExists,
+        suggestRegistration: suggestRegistration,
+        error: suggestRegistration ? null : (message ?? 'Не удалось отправить код'),
+      );
+    } catch (e) {
+      debugPrint('Password reset request error: $e');
+      return (
+        message: null,
+        resetCode: null,
+        emailSent: false,
+        accountExists: true,
+        suggestRegistration: false,
+        error:
+            userFacingNetworkError(e) ?? 'Ошибка соединения. Попробуйте снова.',
+      );
+    }
+  }
+
+  Future<({String? message, String? error})> resetPassword({
+    required String email,
+    required String code,
+    required String password,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/reset-password'),
+            headers: const {'Content-Type': 'application/json; charset=UTF-8'},
+            body: jsonEncode({
+              'email': email.trim(),
+              'code': code.trim(),
+              'password': password,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      final responseData = decodeJsonObject(response.body);
+      if (responseData == null) {
+        return (
+          message: null,
+          error: userFacingApiError(
+            statusCode: response.statusCode,
+            body: response.body,
+            fallback: 'Не удалось изменить пароль',
+          ),
+        );
+      }
+
+      final message = responseData['message']?.toString();
+      if (response.statusCode == 200 && responseData['success'] == true) {
+        return (message: message, error: null);
+      }
+
+      return (message: null, error: message ?? 'Не удалось изменить пароль');
+    } catch (e) {
+      debugPrint('Password reset error: $e');
+      return (
+        message: null,
+        error:
+            userFacingNetworkError(e) ?? 'Ошибка соединения. Попробуйте снова.',
       );
     }
   }
@@ -108,10 +231,7 @@ class RegistrationService {
 
     final response = await http.post(
       url,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': token,
-      },
+      headers: {'Content-Type': 'application/json', 'Authorization': token},
       body: jsonEncode({
         'distance': distance,
         'steps': steps,

@@ -25,6 +25,9 @@ class WorkoutMetadata {
     this.backendRouteId,
     this.importedFromChat = false,
     this.shareId,
+    this.sharedByUserId,
+    this.sharedByUserName,
+    this.sharedByAvatarUrl,
   });
 
   final String title;
@@ -46,6 +49,9 @@ class WorkoutMetadata {
   final int? backendRouteId;
   final bool importedFromChat;
   final int? shareId;
+  final String? sharedByUserId;
+  final String? sharedByUserName;
+  final String? sharedByAvatarUrl;
 
   factory WorkoutMetadata.imported({
     required String title,
@@ -64,6 +70,9 @@ class WorkoutMetadata {
     String notes = '',
     String? photoPath,
     String? photoUrl,
+    String? sharedByUserId,
+    String? sharedByUserName,
+    String? sharedByAvatarUrl,
   }) {
     return WorkoutMetadata(
       title: title.trim().isEmpty ? 'Маршрут из чата' : title.trim(),
@@ -83,6 +92,9 @@ class WorkoutMetadata {
       effortLevel: effortLevel,
       photoPath: photoPath,
       photoUrl: photoUrl,
+      sharedByUserId: sharedByUserId,
+      sharedByUserName: sharedByUserName,
+      sharedByAvatarUrl: sharedByAvatarUrl,
     );
   }
 
@@ -106,6 +118,9 @@ class WorkoutMetadata {
     int? backendRouteId,
     bool? importedFromChat,
     int? shareId,
+    String? sharedByUserId,
+    String? sharedByUserName,
+    String? sharedByAvatarUrl,
   }) {
     return WorkoutMetadata(
       title: title ?? this.title,
@@ -127,6 +142,9 @@ class WorkoutMetadata {
       backendRouteId: backendRouteId ?? this.backendRouteId,
       importedFromChat: importedFromChat ?? this.importedFromChat,
       shareId: shareId ?? this.shareId,
+      sharedByUserId: sharedByUserId ?? this.sharedByUserId,
+      sharedByUserName: sharedByUserName ?? this.sharedByUserName,
+      sharedByAvatarUrl: sharedByAvatarUrl ?? this.sharedByAvatarUrl,
     );
   }
 
@@ -151,6 +169,9 @@ class WorkoutMetadata {
           'backendRouteId': backendRouteId,
         if (importedFromChat) 'importedFromChat': true,
         if (shareId != null) 'shareId': shareId,
+        if (sharedByUserId != null) 'sharedByUserId': sharedByUserId,
+        if (sharedByUserName != null) 'sharedByUserName': sharedByUserName,
+        if (sharedByAvatarUrl != null) 'sharedByAvatarUrl': sharedByAvatarUrl,
       };
 
   factory WorkoutMetadata.fromJson(Map<String, dynamic> json) {
@@ -176,6 +197,9 @@ class WorkoutMetadata {
           imported ? null : (json['backendRouteId'] as num?)?.toInt(),
       importedFromChat: imported,
       shareId: (json['shareId'] as num?)?.toInt(),
+      sharedByUserId: json['sharedByUserId'] as String?,
+      sharedByUserName: json['sharedByUserName'] as String?,
+      sharedByAvatarUrl: json['sharedByAvatarUrl'] as String?,
     );
   }
 

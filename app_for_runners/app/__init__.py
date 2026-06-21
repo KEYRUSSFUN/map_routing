@@ -29,6 +29,8 @@ def create_app(config_class=Config):
     os.makedirs(app.config['WORKOUT_PHOTO_UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['STORY_UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['MOMENT_UPLOAD_FOLDER'], exist_ok=True)
+    os.makedirs(app.config['CLUB_AVATAR_UPLOAD_FOLDER'], exist_ok=True)
+    os.makedirs(app.config['CLUB_COVER_UPLOAD_FOLDER'], exist_ok=True)
 
     socketio = init_extensions(app)
 

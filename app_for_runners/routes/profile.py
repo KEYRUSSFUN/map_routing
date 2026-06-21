@@ -5,7 +5,9 @@ from extensions import db
 from models import User, UserInfo
 from utils.auth import token_required
 from utils.avatar_storage import avatar_file_path, save_user_avatar
+from utils.cover_storage import cover_file_path, save_user_cover
 from utils.user_avatar import avatar_url_for
+from utils.user_cover import ALLOWED_COVER_PRESETS, cover_url_for, is_valid_cover_preset
 
 profile_bp = Blueprint('profile', __name__)
 
@@ -20,6 +22,8 @@ def _serialize_user_info(user_info):
         "age": user_info.Age,
         "country": user_info.country or "",
         "avatar_url": avatar_url_for(user_info),
+        "cover_url": cover_url_for(user_info),
+        "cover_preset": user_info.cover_preset,
     }
 
     return data
@@ -111,6 +115,73 @@ def get_user_avatar(user_id):
     path = avatar_file_path(user_info)
     if not path or not os.path.isfile(path):
         return jsonify({"error": "Avatar not found"}), 404
+
+    return send_file(path, conditional=True)
+
+
+@profile_bp.route('/api/user_info/cover/preset', methods=['POST'])
+@token_required
+def set_user_cover_preset(user_id):
+    data = request.get_json(silent=True) or {}
+    preset = (data.get('cover_preset') or '').strip()
+
+    if not is_valid_cover_preset(preset):
+        allowed = ', '.join(sorted(ALLOWED_COVER_PRESETS))
+        return jsonify({
+            "error": f"Unknown cover preset. Allowed: {allowed}",
+        }), 400
+
+    user_info = UserInfo.query.filter_by(id_User=user_id).first()
+    if not user_info:
+        return jsonify({"error": "User info not found"}), 404
+
+    user_info.cover_preset = preset
+    user_info.cover_filename = None
+    user_info.cover_updated_at = None
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        **_serialize_user_info(user_info),
+    }), 200
+
+
+@profile_bp.route('/api/user_info/cover', methods=['POST'])
+@token_required
+def upload_user_cover(user_id):
+    if 'cover' not in request.files:
+        return jsonify({"error": "Cover file is required"}), 400
+
+    cover_file = request.files['cover']
+    user_info = UserInfo.query.filter_by(id_User=user_id).first()
+    if not user_info:
+        return jsonify({"error": "User info not found"}), 404
+
+    try:
+        filename, updated_at = save_user_cover(user_id, cover_file)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    user_info.cover_filename = filename
+    user_info.cover_updated_at = updated_at
+    user_info.cover_preset = None
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        **_serialize_user_info(user_info),
+    }), 200
+
+
+@profile_bp.route('/api/user_info/cover/<int:user_id>', methods=['GET'])
+def get_user_cover(user_id):
+    user_info = UserInfo.query.filter_by(id_User=user_id).first()
+    if not user_info:
+        return jsonify({"error": "User info not found"}), 404
+
+    path = cover_file_path(user_info)
+    if not path or not os.path.isfile(path):
+        return jsonify({"error": "Cover not found"}), 404
 
     return send_file(path, conditional=True)
 

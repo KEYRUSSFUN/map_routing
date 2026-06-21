@@ -96,13 +96,17 @@ class BackendRoute {
 }
 
 class RouteService {
-  Future<List<BackendRoute>> fetchUserRoutes() async {
+  Future<List<BackendRoute>> fetchUserRoutes({String? userId}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('jwt_token');
     if (token == null || token.isEmpty) return [];
 
+    final uri = userId != null && userId.isNotEmpty
+        ? Uri.parse('$backendBaseUrl/api/routes/user/$userId')
+        : Uri.parse('$backendBaseUrl/api/routes');
+
     final response = await http.get(
-      Uri.parse('$backendBaseUrl/api/routes'),
+      uri,
       headers: {
         'Authorization': token,
         'Content-Type': 'application/json',

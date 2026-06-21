@@ -113,6 +113,75 @@ class UserService {
     return null;
   }
 
+  Future<Map<String, dynamic>?> setCoverPreset(String presetId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('jwt_token');
+
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse('$backendBaseUrl/api/user_info/cover/preset'),
+      headers: {
+        'Authorization': token,
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'cover_preset': presetId}),
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = json.decode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        invalidateSelfInfoCache();
+        return decoded;
+      }
+      if (decoded is Map) {
+        invalidateSelfInfoCache();
+        return Map<String, dynamic>.from(decoded);
+      }
+    }
+
+    debugPrint(
+      'Error setting cover preset: ${response.statusCode} - ${response.body}',
+    );
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> uploadCover(File file) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('jwt_token');
+
+    if (token == null) return null;
+
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$backendBaseUrl/api/user_info/cover'),
+    );
+    request.headers['Authorization'] = token;
+    request.files.add(
+      await http.MultipartFile.fromPath('cover', file.path),
+    );
+
+    final streamedResponse = await request.send();
+    final body = await streamedResponse.stream.bytesToString();
+
+    if (streamedResponse.statusCode == 200) {
+      final decoded = json.decode(body);
+      if (decoded is Map<String, dynamic>) {
+        invalidateSelfInfoCache();
+        return decoded;
+      }
+      if (decoded is Map) {
+        invalidateSelfInfoCache();
+        return Map<String, dynamic>.from(decoded);
+      }
+    }
+
+    debugPrint(
+      'Error uploading cover: ${streamedResponse.statusCode} - $body',
+    );
+    return null;
+  }
+
   Future<Map<String, dynamic>?> updateUserInfo(
       Map<String, dynamic> data) async {
     final prefs = await SharedPreferences.getInstance();

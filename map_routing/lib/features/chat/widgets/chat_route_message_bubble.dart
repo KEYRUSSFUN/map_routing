@@ -74,10 +74,7 @@ class ChatRouteMessageBubble extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  [
-                    fileName,
-                    if (_sizeLabel.isNotEmpty) _sizeLabel,
-                  ].join(' • '),
+                  [fileName, if (_sizeLabel.isNotEmpty) _sizeLabel].join(' • '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.lexendDeca(

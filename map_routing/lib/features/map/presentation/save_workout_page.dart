@@ -2,20 +2,18 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:map_routing/core/widgets/app_confirm_dialog.dart';
 import 'package:map_routing/core/widgets/app_snackbar.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:map_routing/data/activity_calculator.dart';
 import 'package:map_routing/data/geometry_provider.dart';
+import 'package:map_routing/data/models/achievement.dart';
 import 'package:map_routing/data/models/workout_activity_type.dart';
 import 'package:map_routing/data/models/workout_metadata.dart';
 import 'package:map_routing/data/models/workout_session_data.dart';
-import 'package:map_routing/data/models/achievement.dart';
 import 'package:map_routing/data/services/achievement_service.dart';
 import 'package:map_routing/data/services/gpx_workout_service.dart';
-import 'package:map_routing/data/services/registration_service.dart';
 import 'package:map_routing/data/services/route_service.dart';
 import 'package:map_routing/data/services/statistics_service.dart';
-import 'package:map_routing/data/services/user_service.dart';
 import 'package:map_routing/data/services/user_workout_storage.dart';
 import 'package:map_routing/features/auth/presentation/auth_ui.dart';
 import 'package:map_routing/features/map/presentation/map_ui_styles.dart';
@@ -77,16 +75,13 @@ class _SaveWorkoutPageState extends State<SaveWorkoutPage> {
   }
 
   Future<void> _deleteWorkout() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Удалить тренировку?'),
-        content: const Text('Данные тренировки не будут сохранены.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Удалить')),
-        ],
-      ),
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Удалить тренировку?',
+      message: 'Данные тренировки не будут сохранены.',
+      confirmLabel: 'Удалить',
+      destructive: true,
+      icon: Icons.delete_outline_rounded,
     );
     if (confirmed == true && mounted) Navigator.pop(context);
   }
@@ -160,25 +155,6 @@ class _SaveWorkoutPageState extends State<SaveWorkoutPage> {
           photoUrl: photoUrl,
         );
         await WorkoutMetadata.saveToFile(gpxPath, metadata);
-
-        final userInfo = await UserService().fetchUserInfo();
-        final weight = (userInfo?['weight'] as num?)?.toDouble() ?? 70.0;
-        final height = (userInfo?['height'] as num?)?.toDouble();
-        final calculator = ActivityCalculator(
-          weightKg: weight,
-          heightCm: height,
-        );
-        final steps = calculator.estimateStepsByDistance(
-          widget.session.distanceMeters,
-        );
-
-        await RegistrationService().saveTrackingData(
-          distance: widget.session.distanceMeters,
-          steps: steps,
-          calories: widget.session.calories,
-          token: token,
-          activityDate: startedAt,
-        );
         StatisticsService.clearGlobalCache();
       }
 

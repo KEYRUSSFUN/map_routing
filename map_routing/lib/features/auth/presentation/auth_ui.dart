@@ -488,3 +488,58 @@ class AuthFooterLink extends StatelessWidget {
     );
   }
 }
+
+enum AuthNoticeVariant { success, error, info }
+
+class AuthNoticeBanner extends StatelessWidget {
+  const AuthNoticeBanner({
+    super.key,
+    required this.message,
+    required this.variant,
+  });
+
+  final String message;
+  final AuthNoticeVariant variant;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = switch (variant) {
+      AuthNoticeVariant.success => AuthColors.primaryGreen,
+      AuthNoticeVariant.error => const Color(0xFFE53935),
+      AuthNoticeVariant.info => AuthColors.forgotPassword,
+    };
+
+    final icon = switch (variant) {
+      AuthNoticeVariant.success => Icons.mark_email_read_outlined,
+      AuthNoticeVariant.error => Icons.error_outline_rounded,
+      AuthNoticeVariant.info => Icons.info_outline_rounded,
+    };
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.35)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: accent, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: authFooterStyle().copyWith(
+                  color: AuthColors.title,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

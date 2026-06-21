@@ -10,6 +10,8 @@ from .user_achievement import UserAchievement
 from .challenge import Challenge, ChallengeParticipant
 from .story import Story, StoryView
 from .moment import Moment, MomentLike, MomentComment
+from .password_reset_token import PasswordResetToken
+from .club import Club, ClubMember
 
 __all__ = [
     'User',
@@ -30,4 +32,7 @@ __all__ = [
     'Moment',
     'MomentLike',
     'MomentComment',
+    'PasswordResetToken',
+    'Club',
+    'ClubMember',
 ]

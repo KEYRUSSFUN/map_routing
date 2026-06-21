@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:map_routing/core/network/backend_urls.dart';
+import 'package:map_routing/core/widgets/user_avatar.dart';
 import 'package:map_routing/data/models/challenge.dart';
 import 'package:map_routing/data/models/moment.dart';
 import 'package:map_routing/data/models/story.dart';
 import 'package:map_routing/features/moments/presentation/moment_feed_card.dart';
+import 'package:map_routing/features/profile/presentation/profile_cover_background.dart';
 
 abstract final class ProfileColors {
   static const primaryGreen = Color(0xFF00E676);
@@ -44,7 +46,7 @@ TextStyle profileLinkStyle() => GoogleFonts.lexendDeca(
   color: ProfileColors.primaryGreen,
 );
 
-enum ProfileTab { statistics, achievements, history }
+enum ProfileTab { events, statistics, achievements, history }
 
 BoxDecoration profileElevatedDecoration({
   Color backgroundColor = Colors.white,
@@ -68,7 +70,10 @@ class ProfileHeader extends StatelessWidget {
     required this.location,
     this.subtitle = 'Спортсмен',
     this.avatarUrl,
+    this.coverUrl,
+    this.coverPresetId,
     this.onAvatarTap,
+    this.onCoverTap,
     this.onBack,
     this.onSettings,
     this.statPills = const [],
@@ -78,7 +83,10 @@ class ProfileHeader extends StatelessWidget {
   final String location;
   final String subtitle;
   final String? avatarUrl;
+  final String? coverUrl;
+  final String? coverPresetId;
   final VoidCallback? onAvatarTap;
+  final VoidCallback? onCoverTap;
   final VoidCallback? onBack;
   final VoidCallback? onSettings;
   final List<ProfileStatPillData> statPills;
@@ -97,32 +105,13 @@ class ProfileHeader extends StatelessWidget {
             SizedBox(
               height: _coverHeight,
               width: double.infinity,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.asset(
-                    'assets/profile/cover.jpg',
-                    fit: BoxFit.cover,
-                    alignment: Alignment.center,
-                    filterQuality: FilterQuality.medium,
-                    gaplessPlayback: true,
-                  ),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black.withValues(alpha: 0.2),
-                          Colors.black.withValues(alpha: 0.05),
-                          Colors.white.withValues(alpha: 0.0),
-                          Colors.white,
-                        ],
-                        stops: const [0.0, 0.45, 0.78, 1.0],
-                      ),
-                    ),
-                  ),
-                ],
+              child: GestureDetector(
+                onTap: onCoverTap,
+                child: ProfileCoverBackground(
+                  coverUrl: coverUrl,
+                  coverPresetId: coverPresetId,
+                  height: _coverHeight,
+                ),
               ),
             ),
             if (onBack != null)
@@ -296,10 +285,11 @@ class ProfileTabBar extends StatelessWidget {
   final ProfileTab selected;
   final ValueChanged<ProfileTab> onChanged;
 
-  static const _labels = {
-    ProfileTab.statistics: 'Статистика',
-    ProfileTab.achievements: 'Достижения',
-    ProfileTab.history: 'История',
+  static const _tabMeta = {
+    ProfileTab.events: (Icons.auto_awesome_outlined, 'События'),
+    ProfileTab.statistics: (Icons.insights_outlined, 'Статистика'),
+    ProfileTab.achievements: (Icons.emoji_events_outlined, 'Достижения'),
+    ProfileTab.history: (Icons.directions_run_outlined, 'Тренировки'),
   };
 
   @override
@@ -307,18 +297,27 @@ class ProfileTabBar extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
       child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: profileElevatedDecoration(
-          backgroundColor: ProfileColors.cardBg,
-          radius: 14,
+        padding: const EdgeInsets.all(5),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE3E8EE)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0A000000),
+              blurRadius: 12,
+              offset: Offset(0, 4),
+            ),
+          ],
         ),
         child: Row(
           children: [
             for (var i = 0; i < ProfileTab.values.length; i++) ...[
-              if (i > 0) const SizedBox(width: 6),
+              if (i > 0) const SizedBox(width: 4),
               Expanded(
                 child: _ProfileTabItem(
-                  label: _labels[ProfileTab.values[i]]!,
+                  icon: _tabMeta[ProfileTab.values[i]]!.$1,
+                  label: _tabMeta[ProfileTab.values[i]]!.$2,
                   isActive: ProfileTab.values[i] == selected,
                   onTap: () => onChanged(ProfileTab.values[i]),
                 ),
@@ -333,33 +332,61 @@ class ProfileTabBar extends StatelessWidget {
 
 class _ProfileTabItem extends StatelessWidget {
   const _ProfileTabItem({
+    required this.icon,
     required this.label,
     required this.isActive,
     required this.onTap,
   });
 
+  final IconData icon;
   final String label;
   final bool isActive;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: isActive ? ProfileColors.tabActive : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: GoogleFonts.lexendDeca(
-            fontSize: 13,
-            fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-            color: isActive ? ProfileColors.title : ProfileColors.body,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          decoration: BoxDecoration(
+            color: isActive
+                ? ProfileColors.primaryGreen.withValues(alpha: 0.12)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+            border: isActive
+                ? Border.all(
+                    color: ProfileColors.primaryGreen.withValues(alpha: 0.28),
+                  )
+                : null,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 20,
+                color: isActive ? ProfileColors.primaryGreen : ProfileColors.body,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.lexendDeca(
+                  fontSize: 10.5,
+                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                  color: isActive ? ProfileColors.title : ProfileColors.body,
+                  height: 1.1,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -478,55 +505,117 @@ class AchievementBadge extends StatelessWidget {
     required this.label,
     required this.icon,
     this.locked = false,
-    this.highlighted = false,
+    this.showNewDot = false,
+    this.size = 64,
+    this.showLabel = true,
   });
 
   final String label;
   final IconData icon;
   final bool locked;
-  final bool highlighted;
+  final bool showNewDot;
+  final double size;
+  final bool showLabel;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
+        AchievementMedallion(
+          icon: icon,
+          locked: locked,
+          showNewDot: showNewDot,
+          size: size,
+        ),
+        if (showLabel) ...[
+          SizedBox(height: size >= 80 ? 10 : 6),
+          SizedBox(
+            width: size + 8,
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.lexendDeca(
+                fontSize: size >= 80 ? 12 : 11,
+                fontWeight: locked ? FontWeight.w500 : FontWeight.w600,
+                color: locked ? ProfileColors.body : ProfileColors.title,
+                height: 1.2,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class AchievementMedallion extends StatelessWidget {
+  const AchievementMedallion({
+    super.key,
+    required this.icon,
+    this.locked = false,
+    this.showNewDot = false,
+    this.size = 64,
+  });
+
+  final IconData icon;
+  final bool locked;
+  final bool showNewDot;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconSize = size * 0.36;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
         Container(
-          width: 64,
-          height: 64,
+          width: size,
+          height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: locked ? Colors.grey.shade200 : Colors.white,
+            color: locked ? const Color(0xFFF7F9FA) : null,
+            gradient: locked
+                ? null
+                : LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      ProfileColors.orange.withValues(alpha: 0.22),
+                      ProfileColors.orange.withValues(alpha: 0.07),
+                    ],
+                  ),
             border: Border.all(
               color: locked
-                  ? Colors.grey.shade300
-                  : (highlighted
-                        ? ProfileColors.orange
-                        : ProfileColors.orangeBorder),
-              width: highlighted ? 2.5 : 1.5,
+                  ? const Color(0xFFE3E8EE)
+                  : ProfileColors.orange.withValues(alpha: 0.32),
+              width: 1.5,
             ),
           ),
           child: Icon(
-            locked ? Icons.lock_outline : icon,
-            color: locked ? ProfileColors.body : ProfileColors.orange,
-            size: 26,
+            locked ? Icons.lock_outline_rounded : icon,
+            color: locked
+                ? const Color(0xFFB0B8C1)
+                : ProfileColors.orange,
+            size: iconSize,
           ),
         ),
-        const SizedBox(height: 6),
-        SizedBox(
-          width: 72,
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.lexendDeca(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: ProfileColors.body,
-              height: 1.2,
+        if (showNewDot && !locked)
+          Positioned(
+            top: 1,
+            right: -3,
+            child: Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                color: ProfileColors.orange,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -546,6 +635,8 @@ class ActivityCard extends StatelessWidget {
     this.selectionMode = false,
     this.selected = false,
     this.onSelectedChanged,
+    this.ownerName,
+    this.ownerAvatarUrl,
   });
 
   final String title;
@@ -559,6 +650,8 @@ class ActivityCard extends StatelessWidget {
   final bool selectionMode;
   final bool selected;
   final ValueChanged<bool>? onSelectedChanged;
+  final String? ownerName;
+  final String? ownerAvatarUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -566,106 +659,188 @@ class ActivityCard extends StatelessWidget {
         ? () => onSelectedChanged?.call(!selected)
         : onTap;
 
-    return ProfileCard(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (selectionMode) ...[
-                Padding(
-                  padding: const EdgeInsets.only(top: 8, right: 4),
-                  child: Checkbox(
-                    value: selected,
-                    activeColor: ProfileColors.primaryGreen,
-                    onChanged: (value) =>
-                        onSelectedChanged?.call(value ?? false),
-                  ),
-                ),
-              ],
-              Expanded(
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: cardTap,
-                  onLongPress: selectionMode ? null : onLongPress,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: const BoxDecoration(
-                          color: ProfileColors.primaryGreen,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(icon, color: Colors.white, size: 22),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(title, style: profileTitleStyle(size: 16)),
-                            const SizedBox(height: 2),
-                            Text(subtitle, style: profileSubtitleStyle()),
-                            if (detailLine != null &&
-                                detailLine!.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                detailLine!,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: profileSubtitleStyle(),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: cardTap,
+        onLongPress: selectionMode ? null : onLongPress,
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: selectionMode && selected
+                ? ProfileColors.primaryGreen.withValues(alpha: 0.06)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selectionMode && selected
+                  ? ProfileColors.primaryGreen.withValues(alpha: 0.35)
+                  : const Color(0xFFE3E8EE),
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x12000000),
+                blurRadius: 14,
+                offset: Offset(0, 5),
               ),
-              if (!selectionMode && onShowOnMap != null) ...[
-                const SizedBox(width: 4),
-                Material(
-                  color: ProfileColors.primaryGreen,
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: onShowOnMap,
-                    child: const Padding(
-                      padding: EdgeInsets.all(10),
-                      child: Icon(
-                        Icons.map_outlined,
-                        color: Colors.white,
-                        size: 22,
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (ownerName != null && ownerName!.trim().isNotEmpty) ...[
+                Row(
+                  children: [
+                    UserAvatar(
+                      name: ownerName!,
+                      avatarUrl: ownerAvatarUrl,
+                      radius: 14,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        ownerName!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: profileSubtitleStyle().copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: ProfileColors.title,
+                        ),
                       ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (selectionMode) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10, right: 4),
+                      child: Checkbox(
+                        value: selected,
+                        activeColor: ProfileColors.primaryGreen,
+                        onChanged: (value) =>
+                            onSelectedChanged?.call(value ?? false),
+                      ),
+                    ),
+                  ],
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [
+                          ProfileColors.primaryGreen,
+                          Color(0xFF00C853),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: ProfileColors.primaryGreen.withValues(
+                            alpha: 0.22,
+                          ),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Icon(icon, color: Colors.white, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: profileTitleStyle(size: 16),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: profileSubtitleStyle(),
+                        ),
+                        if (detailLine != null && detailLine!.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            detailLine!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: profileSubtitleStyle().copyWith(
+                              color: ProfileColors.primaryGreen,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (!selectionMode && onShowOnMap != null) ...[
+                    const SizedBox(width: 8),
+                    Material(
+                      color: ProfileColors.primaryGreen.withValues(alpha: 0.12),
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: onShowOnMap,
+                        child: const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: Icon(
+                            Icons.map_outlined,
+                            color: ProfileColors.primaryGreen,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              if (stats.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF7F9FA),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      for (var i = 0; i < stats.length; i++) ...[
+                        if (i > 0)
+                          Container(
+                            width: 1,
+                            height: 28,
+                            margin: const EdgeInsets.symmetric(horizontal: 8),
+                            color: const Color(0xFFE3E8EE),
+                          ),
+                        Expanded(
+                          child: _ActivityStatItem(
+                            stat: stats[i],
+                            alignment: _statAlignment(i, stats.length),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ],
             ],
           ),
-          if (stats.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Row(
-                children: [
-                  for (var i = 0; i < stats.length; i++)
-                    Expanded(
-                      child: _ActivityStatItem(
-                        stat: stats[i],
-                        alignment: _statAlignment(i, stats.length),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
@@ -711,12 +886,16 @@ class _ActivityStatItem extends StatelessWidget {
           Text(
             stat.value,
             style: GoogleFonts.lexendDeca(
-              fontSize: 14,
+              fontSize: 15,
               fontWeight: FontWeight.w700,
               color: ProfileColors.title,
             ),
           ),
-          Text(stat.label, style: profileSubtitleStyle()),
+          const SizedBox(height: 2),
+          Text(
+            stat.label,
+            style: profileSubtitleStyle().copyWith(fontSize: 12),
+          ),
         ],
       ),
     );
@@ -786,8 +965,10 @@ class WeeklyActivityBarChart extends StatelessWidget {
         weeklyData ?? const [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
     final maxY = _getMaxY(resolvedData);
     final dayLabels = _getDayLabels();
+    final chartKey = ValueKey(resolvedData.map((v) => v.toStringAsFixed(1)).join('|'));
 
     return RepaintBoundary(
+      key: chartKey,
       child: ProfileCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -807,6 +988,7 @@ class WeeklyActivityBarChart extends StatelessWidget {
             SizedBox(
               height: 160,
               child: BarChart(
+                key: chartKey,
                 BarChartData(
                   maxY: maxY,
                   gridData: FlGridData(
@@ -817,6 +999,16 @@ class WeeklyActivityBarChart extends StatelessWidget {
                         FlLine(color: Colors.grey.shade300, strokeWidth: 1),
                   ),
                   borderData: FlBorderData(show: false),
+                  barTouchData: BarTouchData(
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                        return BarTooltipItem(
+                          '${(rod.toY / 1000).toStringAsFixed(2)} км',
+                          profileSubtitleStyle(color: Colors.white),
+                        );
+                      },
+                    ),
+                  ),
                   titlesData: FlTitlesData(
                     topTitles: const AxisTitles(
                       sideTitles: SideTitles(showTitles: false),
@@ -961,85 +1153,168 @@ class ProfileChallengeProgressCard extends StatelessWidget {
   final ChallengeSummary challenge;
   final VoidCallback? onTap;
 
+  static const _cardBlack = Color(0xFF17171A);
+  static const _daysLeft = Color(0xFFFFD166);
+
   @override
   Widget build(BuildContext context) {
     final progressValue = challenge.myProgress ?? 0;
+    final progress = challenge.progressPercent;
 
-    return ProfileCard(
-      padding: const EdgeInsets.all(14),
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            gradient: LinearGradient(
+              colors: [
+                _cardBlack.withValues(alpha: 0.92),
+                _cardBlack.withValues(alpha: 0.78),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: _cardBlack.withValues(alpha: 0.2),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                right: -16,
+                top: -16,
+                child: Container(
+                  width: 88,
+                  height: 88,
                   decoration: BoxDecoration(
-                    color: ProfileColors.primaryGreen.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Center(
-                    child: FaIcon(
-                      challenge.icon,
-                      size: 18,
-                      color: ProfileColors.primaryGreen,
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        ProfileColors.primaryGreen.withValues(alpha: 0.24),
+                        Colors.transparent,
+                      ],
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        challenge.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: profileTitleStyle(size: 15),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        challenge.statusLabel,
-                        style: profileSubtitleStyle(),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.chevron_right, color: ProfileColors.body),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: challenge.progressPercent,
-                minHeight: 6,
-                backgroundColor: const Color(0xFFECECEC),
-                color: ProfileColors.primaryGreen,
               ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Text(
-                  '${challenge.formatProgress(progressValue)} / ${challenge.targetLabel}',
-                  style: profileSubtitleStyle(
-                    color: ProfileColors.title,
-                  ).copyWith(fontWeight: FontWeight.w600),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            color: ProfileColors.primaryGreen
+                                .withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: ProfileColors.primaryGreen
+                                  .withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Center(
+                            child: FaIcon(
+                              challenge.icon,
+                              size: 20,
+                              color: ProfileColors.primaryGreen,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                challenge.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.lexendDeca(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                  height: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                challenge.daysLeftLabel,
+                                style: GoogleFonts.lexendDeca(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: _daysLeft,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                challenge.participantsLabel,
+                                style: GoogleFonts.lexendDeca(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: ProfileColors.primaryGreen,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          color: Color(0xFF9CA3AF),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: progress.clamp(0.0, 1.0),
+                        minHeight: 6,
+                        backgroundColor: Colors.white.withValues(alpha: 0.12),
+                        color: ProfileColors.primaryGreen,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${challenge.formatProgress(progressValue)} / ${challenge.targetLabel}',
+                            style: GoogleFonts.lexendDeca(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white.withValues(alpha: 0.92),
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '${(progress * 100).round()}%',
+                          style: GoogleFonts.lexendDeca(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: ProfileColors.primaryGreen,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                const Spacer(),
-                Text(
-                  '${(challenge.progressPercent * 100).round()}%',
-                  style: profileSubtitleStyle(),
-                ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1051,14 +1326,18 @@ class ProfileStoriesSection extends StatelessWidget {
     super.key,
     required this.stories,
     required this.isLoading,
-    required this.onAddTap,
     required this.onStoryTap,
+    this.onAddTap,
+    this.readOnly = false,
+    this.sectionTitle = 'Мои истории',
   });
 
   final List<StoryItem> stories;
   final bool isLoading;
-  final VoidCallback onAddTap;
+  final VoidCallback? onAddTap;
   final ValueChanged<StoryItem> onStoryTap;
+  final bool readOnly;
+  final String sectionTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -1067,11 +1346,7 @@ class ProfileStoriesSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ProfileSectionHeader(
-            title: 'Мои истории',
-            trailing: 'Добавить',
-            onTrailingTap: onAddTap,
-          ),
+          ProfileSectionHeader(title: sectionTitle),
           const SizedBox(height: 12),
           if (isLoading && stories.isEmpty)
             const Center(
@@ -1084,7 +1359,7 @@ class ProfileStoriesSection extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Text(
-                'Опубликуйте историю — друзья увидят её на главной.',
+                readOnly ? 'У пользователя пока нет историй.' : 'Добавьте первую историю.',
                 style: profileSubtitleStyle(),
               ),
             )
@@ -1093,16 +1368,16 @@ class ProfileStoriesSection extends StatelessWidget {
               height: 112,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                itemCount: stories.length + 1,
+                itemCount: readOnly ? stories.length : stories.length + 1,
                 separatorBuilder: (_, __) => const SizedBox(width: 10),
                 itemBuilder: (context, index) {
-                  if (index == 0) {
+                  if (!readOnly && index == 0) {
                     return Align(
                       alignment: Alignment.center,
-                      child: _ProfileAddStoryTile(onTap: onAddTap),
+                      child: _ProfileAddStoryTile(onTap: onAddTap ?? () {}),
                     );
                   }
-                  final story = stories[index - 1];
+                  final story = stories[readOnly ? index : index - 1];
                   return Align(
                     alignment: Alignment.center,
                     child: _ProfileStoryTile(
@@ -1225,18 +1500,27 @@ class ProfileMomentsSection extends StatelessWidget {
     super.key,
     required this.moments,
     required this.isLoading,
-    required this.onAddTap,
     required this.onLikeTap,
     required this.onCommentTap,
-    required this.onDeleteTap,
+    this.onAddTap,
+    this.onEditTap,
+    this.onDeleteTap,
+    this.readOnly = false,
+    this.sectionTitle = 'Моменты',
+    this.emptyMessage =
+        'Поделитесь фото и мыслями — моменты появятся в ленте на главной.',
   });
 
   final List<MomentItem> moments;
   final bool isLoading;
-  final VoidCallback onAddTap;
+  final VoidCallback? onAddTap;
   final ValueChanged<int> onLikeTap;
   final ValueChanged<int> onCommentTap;
-  final ValueChanged<int> onDeleteTap;
+  final ValueChanged<int>? onEditTap;
+  final ValueChanged<int>? onDeleteTap;
+  final bool readOnly;
+  final String sectionTitle;
+  final String emptyMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -1246,9 +1530,9 @@ class ProfileMomentsSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ProfileSectionHeader(
-            title: 'Моменты',
-            trailing: 'Добавить',
-            onTrailingTap: onAddTap,
+            title: sectionTitle,
+            trailing: readOnly ? null : 'Добавить',
+            onTrailingTap: readOnly ? null : onAddTap,
           ),
           const SizedBox(height: 12),
           if (isLoading && moments.isEmpty)
@@ -1262,7 +1546,7 @@ class ProfileMomentsSection extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Text(
-                'Поделитесь фото и мыслями — моменты появятся в ленте на главной.',
+                emptyMessage,
                 style: profileSubtitleStyle(),
               ),
             )
@@ -1275,7 +1559,13 @@ class ProfileMomentsSection extends StatelessWidget {
                     compact: true,
                     onLikeTap: () => onLikeTap(i),
                     onCommentTap: () => onCommentTap(i),
-                    onDeleteTap: moments[i].isMe ? () => onDeleteTap(i) : null,
+                    onEditTap: !readOnly && moments[i].isMe && onEditTap != null
+                        ? () => onEditTap!(i)
+                        : null,
+                    onDeleteTap:
+                        !readOnly && moments[i].isMe && onDeleteTap != null
+                            ? () => onDeleteTap!(i)
+                            : null,
                   ),
               ],
             ),

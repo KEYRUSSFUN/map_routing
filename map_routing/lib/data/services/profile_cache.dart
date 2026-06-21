@@ -9,6 +9,8 @@ class ProfileCacheSnapshot {
     required this.name,
     required this.country,
     required this.avatarUrl,
+    this.coverUrl = '',
+    this.coverPresetId,
     required this.distanceKm,
     required this.steps,
     required this.calories,
@@ -20,6 +22,8 @@ class ProfileCacheSnapshot {
   final String name;
   final String country;
   final String avatarUrl;
+  final String coverUrl;
+  final String? coverPresetId;
   final double distanceKm;
   final int steps;
   final double calories;
@@ -31,6 +35,8 @@ class ProfileCacheSnapshot {
         'name': name,
         'country': country,
         'avatarUrl': avatarUrl,
+        'coverUrl': coverUrl,
+        'coverPresetId': coverPresetId,
         'distanceKm': distanceKm,
         'steps': steps,
         'calories': calories,
@@ -45,6 +51,8 @@ class ProfileCacheSnapshot {
       name: json['name']?.toString() ?? '',
       country: json['country']?.toString() ?? '',
       avatarUrl: json['avatarUrl']?.toString() ?? '',
+      coverUrl: json['coverUrl']?.toString() ?? '',
+      coverPresetId: json['coverPresetId']?.toString(),
       distanceKm: (json['distanceKm'] as num?)?.toDouble() ?? 0,
       steps: (json['steps'] as num?)?.toInt() ?? 0,
       calories: (json['calories'] as num?)?.toDouble() ?? 0,

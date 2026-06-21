@@ -13,6 +13,12 @@ class Moment(db.Model):
         nullable=False,
         index=True,
     )
+    club_id = db.Column(
+        db.Integer,
+        db.ForeignKey('club.id', ondelete='CASCADE'),
+        nullable=True,
+        index=True,
+    )
     text = db.Column(db.String(2000), nullable=True)
     photo_filename = db.Column(db.String(255), nullable=True)
     created_at = db.Column(

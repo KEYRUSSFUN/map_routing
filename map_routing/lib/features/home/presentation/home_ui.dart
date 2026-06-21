@@ -11,6 +11,10 @@ abstract final class HomeColors {
   static const challengeMuted = Color(0xFF9E9E9E);
   static const daysLeft = Color(0xFFFF9800);
   static const cardBorder = Color(0xFFEEEEEE);
+  static const sectionDivider = Color(0xFFEBEBEB);
+  static const storiesSectionBg = Color(0xFFF7FAF8);
+  static const challengesSectionBg = Color(0xFFFFFFFF);
+  static const feedSectionBg = Color(0xFFF3F4F6);
 }
 
 TextStyle homeSectionTitleStyle() => GoogleFonts.lexendDeca(
@@ -58,6 +62,44 @@ class HomeSectionHeader extends StatelessWidget {
   }
 }
 
+class HomeSectionPanel extends StatelessWidget {
+  const HomeSectionPanel({
+    super.key,
+    required this.child,
+    this.backgroundColor = Colors.white,
+    this.padding = const EdgeInsets.fromLTRB(20, 18, 20, 18),
+    this.showTopDivider = false,
+    this.showBottomDivider = false,
+  });
+
+  final Widget child;
+  final Color backgroundColor;
+  final EdgeInsetsGeometry padding;
+  final bool showTopDivider;
+  final bool showBottomDivider;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        border: Border(
+          top: showTopDivider
+              ? const BorderSide(color: HomeColors.sectionDivider)
+              : BorderSide.none,
+          bottom: showBottomDivider
+              ? const BorderSide(color: HomeColors.sectionDivider)
+              : BorderSide.none,
+        ),
+      ),
+      child: Padding(
+        padding: padding,
+        child: child,
+      ),
+    );
+  }
+}
+
 class HomeStoryAvatar extends StatelessWidget {
   const HomeStoryAvatar({
     super.key,
@@ -84,10 +126,10 @@ class HomeStoryAvatar extends StatelessWidget {
   final VoidCallback? onAddTap;
   final VoidCallback? onAvatarTap;
 
-  static const _avatarSize = 52.0;
-  static const _ringPadding = 2.5;
+  static const _avatarSize = 64.0;
+  static const _ringPadding = 3.0;
   static const _avatarSlotSize = _avatarSize + _ringPadding * 2;
-  static const _onlineDotSize = 12.0;
+  static const _onlineDotSize = 14.0;
 
   static const friendPalette = [
     Color(0xFF2196F3),
@@ -157,7 +199,7 @@ class HomeStoryAvatar extends StatelessWidget {
           : Text(
               initial,
               style: GoogleFonts.lexendDeca(
-                fontSize: 18,
+                fontSize: 22,
                 fontWeight: FontWeight.w700,
                 color: Colors.white,
               ),
@@ -168,7 +210,7 @@ class HomeStoryAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 64,
+      width: 78,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -207,15 +249,15 @@ class HomeStoryAvatar extends StatelessWidget {
                     child: GestureDetector(
                       onTap: onAddTap ?? onTap,
                       child: Container(
-                        width: 22,
-                        height: 22,
+                        width: 26,
+                        height: 26,
                         decoration: BoxDecoration(
                           color: HomeColors.primaryGreen,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 2),
                         ),
                         child:
-                            const Icon(Icons.add, size: 14, color: Colors.white),
+                            const Icon(Icons.add, size: 16, color: Colors.white),
                       ),
                     ),
                   ),
@@ -238,15 +280,19 @@ class HomeStoryAvatar extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           SizedBox(
-            height: 16,
+            height: 18,
             child: Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: homeSubtitleStyle(color: HomeColors.title),
+              style: GoogleFonts.lexendDeca(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: HomeColors.title,
+              ),
             ),
           ),
         ],

@@ -11,7 +11,9 @@ import 'package:map_routing/features/auth/presentation/complete_profile_page.dar
 import 'package:map_routing/shared/utils/validators.dart';
 
 class CreateAccountPage extends StatefulWidget {
-  const CreateAccountPage({super.key});
+  const CreateAccountPage({super.key, this.initialEmail});
+
+  final String? initialEmail;
 
   @override
   State<CreateAccountPage> createState() => _CreateAccountPageState();
@@ -33,6 +35,14 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
   String? _termsError;
 
   final GoogleAuthService _googleAuthService = GoogleAuthService();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialEmail != null && widget.initialEmail!.isNotEmpty) {
+      _emailController.text = widget.initialEmail!;
+    }
+  }
 
   Future<void> _register() async {
     if (!_acceptedTerms) {

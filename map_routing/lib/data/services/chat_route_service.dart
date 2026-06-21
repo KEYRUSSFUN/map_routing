@@ -69,6 +69,9 @@ class ChatRouteService {
     required String originalFilename,
     String? title,
     RouteShareSnapshot? snapshot,
+    String? sharedByUserId,
+    String? sharedByUserName,
+    String? sharedByAvatarUrl,
   }) async {
     final response = await http.get(
       Uri.parse(
@@ -138,6 +141,9 @@ class ChatRouteService {
       title: displayTitle,
       snapshot: snapshot?.copyWithPhotoUrl(photoUrl),
       localPhotoPath: localPhotoPath,
+      sharedByUserId: sharedByUserId,
+      sharedByUserName: sharedByUserName,
+      sharedByAvatarUrl: sharedByAvatarUrl,
     );
     GpxWorkoutService.invalidateMemoryCache();
 
