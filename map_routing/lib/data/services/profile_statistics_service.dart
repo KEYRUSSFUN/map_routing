@@ -303,14 +303,15 @@ abstract final class ProfileStatisticsService {
   ) =>
       workouts.where((workout) => !workout.isImported).toList(growable: false);
 
-  /// Скользящие 7 дней (сегодня и 6 предыдущих) — как на графике профиля.
+  /// Календарная неделя (пн–вс) и сравнение с предыдущей календарной неделей.
   static RollingWeekSnapshot computeRollingSevenDaySnapshot(
     List<WorkoutSummary> workouts, {
     DateTime? reference,
   }) {
     final now = reference ?? DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final windowStart = today.subtract(const Duration(days: 6));
+    final weekStart = startOfWeek(now);
+    final weekEnd = weekStart.add(const Duration(days: 7));
+    final prevWeekStart = weekStart.subtract(const Duration(days: 7));
 
     final daily = List<double>.filled(7, 0);
     var currentWeekM = 0.0;
@@ -325,16 +326,15 @@ abstract final class ProfileStatisticsService {
         startedAt.month,
         startedAt.day,
       );
-      final daysAgo = today.difference(day).inDays;
       final distanceMeters = workout.distanceMeters;
 
-      if (daysAgo >= 0 && daysAgo < 7) {
-        final index = day.difference(windowStart).inDays;
+      if (!day.isBefore(weekStart) && day.isBefore(weekEnd)) {
+        final index = day.difference(weekStart).inDays;
         if (index >= 0 && index < 7) {
           daily[index] += distanceMeters;
         }
         currentWeekM += distanceMeters;
-      } else if (daysAgo >= 7 && daysAgo < 14) {
+      } else if (!day.isBefore(prevWeekStart) && day.isBefore(weekStart)) {
         previousWeekM += distanceMeters;
       }
     }

@@ -360,6 +360,8 @@ class _FriendsSheetState extends State<FriendsSheet> {
                   ),
                   const SizedBox(height: 12),
                   _buildSearchField(),
+                  const SizedBox(height: 12),
+                  _buildAddUserSection(),
                   const SizedBox(height: 20),
                   Text(
                     'Мои друзья',

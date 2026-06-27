@@ -31,13 +31,16 @@ class ProfileStatisticsSnapshot {
   static ProfileStatisticsSnapshot fromStats(List<dynamic> stats) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final last7Days = List.generate(7, (i) {
-      final day = now.subtract(Duration(days: 6 - i));
+    final weekStart = StatisticsService._startOfWeek(today);
+    final weekEnd = weekStart.add(const Duration(days: 7));
+    final prevWeekStart = weekStart.subtract(const Duration(days: 7));
+    final weekDays = List.generate(7, (i) {
+      final day = weekStart.add(Duration(days: i));
       return StatisticsService._formatDateKey(day);
     });
 
     final dayStats = <String, Map<String, dynamic>>{
-      for (final day in last7Days)
+      for (final day in weekDays)
         day: {'distance': 0.0, 'steps': 0, 'calories': 0.0},
     };
 
@@ -84,16 +87,15 @@ class ProfileStatisticsSnapshot {
       }
 
       final day = StatisticsService._localDateFromKey(date);
-      final daysAgo = today.difference(day).inDays;
-      if (daysAgo >= 0 && daysAgo < 7) {
+      if (!day.isBefore(weekStart) && day.isBefore(weekEnd)) {
         currentWeekM += distance;
-      } else if (daysAgo >= 7 && daysAgo < 14) {
+      } else if (!day.isBefore(prevWeekStart) && day.isBefore(weekStart)) {
         previousWeekM += distance;
       }
     }
 
     final weekDayStats =
-        last7Days.map((day) => dayStats[day]!).toList(growable: false);
+        weekDays.map((day) => dayStats[day]!).toList(growable: false);
     final weekDistanceM = weekDayStats.fold<double>(
       0.0,
       (sum, day) => sum + ((day['distance'] as num?)?.toDouble() ?? 0.0),
@@ -156,6 +158,11 @@ class StatisticsService {
 
   static String _formatDateKey(DateTime date) {
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  static DateTime _startOfWeek(DateTime date) {
+    final day = DateTime(date.year, date.month, date.day);
+    return day.subtract(Duration(days: day.weekday - 1));
   }
 
   static String? _dateKey(dynamic value) {
@@ -259,7 +266,7 @@ class StatisticsService {
     return snapshot.totals;
   }
 
-  /// Процент изменения дистанции: последние 7 дней vs предыдущие 7 дней.
+  /// Процент изменения дистанции: текущая календарная неделя vs предыдущая.
   Future<double?> fetchWeekOverWeekChangePercent({String? userId}) async {
     final snapshot = await fetchProfileSnapshot(userId: userId);
     return snapshot.weekOverWeekChangePercent;

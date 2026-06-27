@@ -22,7 +22,7 @@ class ClubWorkoutCard extends StatelessWidget {
     final duration = workout.durationSeconds != null
         ? Duration(seconds: workout.durationSeconds!)
         : null;
-    final distanceMeters = (workout.distanceKm ?? 0) * 1000;
+    final distanceMeters = workout.distanceMeters ?? 0;
     final title = workout.title?.trim().isNotEmpty == true
         ? workout.title!.trim()
         : 'Тренировка';

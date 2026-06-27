@@ -289,11 +289,15 @@ class RouteService {
   }
 
   static Map<String, dynamic> trackPointsToGeoJson(List<TrackPoint> points) {
+    final hasElevation = points.any((p) => p.elevation != null);
     return {
       'type': 'LineString',
-      'coordinates': points
-          .map((p) => [p.longitude, p.latitude])
-          .toList(),
+      'coordinates': points.map((p) {
+        if (hasElevation) {
+          return [p.longitude, p.latitude, p.elevation ?? 0.0];
+        }
+        return [p.longitude, p.latitude];
+      }).toList(),
     };
   }
 }

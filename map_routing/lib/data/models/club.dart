@@ -248,7 +248,7 @@ class ClubMemberWorkout {
     this.tags = const [],
     this.effortLevel,
     this.privacy,
-    this.distanceKm,
+    this.distanceMeters,
     this.durationSeconds,
     this.calories,
     this.elevationGainM,
@@ -268,7 +268,7 @@ class ClubMemberWorkout {
   final List<String> tags;
   final int? effortLevel;
   final String? privacy;
-  final double? distanceKm;
+  final double? distanceMeters;
   final int? durationSeconds;
   final int? calories;
   final double? elevationGainM;
@@ -312,7 +312,7 @@ class ClubMemberWorkout {
       tags: tags,
       effortLevel: (json['effort_level'] as num?)?.toInt(),
       privacy: json['privacy']?.toString(),
-      distanceKm: (json['distance'] as num?)?.toDouble(),
+      distanceMeters: (json['distance'] as num?)?.toDouble(),
       durationSeconds: (json['duration_seconds'] as num?)?.toInt(),
       calories: (json['calories'] as num?)?.toInt(),
       elevationGainM: (json['elevation_gain_m'] as num?)?.toDouble(),

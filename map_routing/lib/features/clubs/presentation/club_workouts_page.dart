@@ -89,7 +89,7 @@ class _ClubWorkoutsPageState extends State<ClubWorkoutsPage> {
       tags: item.tags,
       effortLevel: item.effortLevel,
       privacy: item.privacy,
-      distanceMeters: item.distanceKm,
+      distanceMeters: item.distanceMeters,
       durationSeconds: item.durationSeconds,
       calories: item.calories,
       elevationGainM: item.elevationGainM,

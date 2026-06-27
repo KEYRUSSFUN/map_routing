@@ -1,2 +1,2 @@
-const String backendIp = '192.168.1.106';
+const String backendIp = '100.115.205.13';
 const String backendBaseUrl = 'http://$backendIp:5000';

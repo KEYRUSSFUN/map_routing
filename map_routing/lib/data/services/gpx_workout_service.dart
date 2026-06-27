@@ -801,7 +801,7 @@ class GpxWorkoutService {
           summary.avgHeartRate,
       cadenceSpm: summary.cadenceSpm,
       points: summary.points,
-      chartPoints: summary.chartPoints,
+      chartPoints: _chartPointsForWorkout(summary),
       activityType: metadata.activityType,
       description:
           metadata.description.isEmpty ? null : metadata.description,
@@ -826,12 +826,13 @@ class GpxWorkoutService {
     final coords = geoJson['coordinates'];
     if (coords is! List || coords.isEmpty) return [];
 
-    final rawPoints = <({double lat, double lon})>[];
+    final rawPoints = <({double lat, double lon, double? elevation})>[];
     for (final item in coords) {
       if (item is! List || item.length < 2) continue;
       final lon = (item[0] as num).toDouble();
       final lat = (item[1] as num).toDouble();
-      rawPoints.add((lat: lat, lon: lon));
+      final elevation = item.length >= 3 ? (item[2] as num?)?.toDouble() : null;
+      rawPoints.add((lat: lat, lon: lon, elevation: elevation));
     }
 
     if (rawPoints.length < 2) return [];
@@ -843,15 +844,17 @@ class GpxWorkoutService {
         final fraction = i / (rawPoints.length - 1);
         time = startedAt.add(Duration(milliseconds: (totalMs * fraction).round()));
       }
+      final raw = rawPoints[i];
       return TrackPoint(
-        latitude: rawPoints[i].lat,
-        longitude: rawPoints[i].lon,
+        latitude: raw.lat,
+        longitude: raw.lon,
+        elevation: raw.elevation,
         time: time,
       );
     });
   }
 
-  int _estimateDurationMs(List<({double lat, double lon})> rawPoints) {
+  int _estimateDurationMs(List<({double lat, double lon, double? elevation})> rawPoints) {
     var distance = 0.0;
     for (var i = 1; i < rawPoints.length; i++) {
       distance += _haversineMeters(
@@ -992,6 +995,21 @@ class GpxWorkoutService {
       prev = ele;
     }
     return gain;
+  }
+
+  bool _hasElevationInPoints(List<TrackPoint> points) {
+    return points.any((p) => p.elevation != null);
+  }
+
+  List<WorkoutChartPoint> _chartPointsForWorkout(WorkoutSummary summary) {
+    final rebuilt = _buildChartPoints(summary.points);
+    if (_hasElevationInPoints(summary.points)) {
+      return rebuilt;
+    }
+    if (summary.chartPoints.any((p) => p.elevationM > 0)) {
+      return summary.chartPoints;
+    }
+    return rebuilt.isNotEmpty ? rebuilt : summary.chartPoints;
   }
 
   List<WorkoutChartPoint> _buildChartPoints(List<TrackPoint> points) {

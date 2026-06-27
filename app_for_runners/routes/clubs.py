@@ -115,7 +115,7 @@ def _serialize_club(club, *, viewer_id=None):
         'isOwner': membership.role == 'owner' if membership else False,
         'isAdmin': is_moderator,
         'isMember': is_member,
-        'canPost': can_post_in_club(viewer_id, club.id) if viewer_id else False,
+        'canPost': can_post_in_club(club.id, viewer_id) if viewer_id else False,
         'membershipStatus': membership.status if membership else None,
         'membershipRole': membership.role if membership else None,
         'notificationLevel': membership.notification_level if membership else None,
@@ -587,7 +587,10 @@ def club_weekly_stats(user_id, club_id):
     if not club.show_leaderboards:
         return jsonify({'error': 'Leaderboards disabled'}), 403
 
-    since = datetime.now(timezone.utc) - timedelta(days=7)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    week_start = (now - timedelta(days=now.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0,
+    )
 
     member_ids = [
         row.user_id
@@ -606,7 +609,8 @@ def club_weekly_stats(user_id, club_id):
 
     routes = Route.query.filter(
         Route.id_User.in_(member_ids),
-        Route.creation_date >= since.replace(tzinfo=None),
+        Route.creation_date >= week_start,
+        Route.privacy == 'everyone',
     ).all()
 
     total_distance = 0.0
@@ -615,14 +619,14 @@ def club_weekly_stats(user_id, club_id):
     by_user = {}
 
     for route in routes:
-        distance = float(route.distance or 0)
+        distance_km = float(route.distance or 0) / 1000.0
         elevation = float(route.elevation_gain_m or 0)
-        total_distance += distance
+        total_distance += distance_km
         bucket = by_user.setdefault(route.id_User, {'distance': 0.0, 'elevation': 0.0})
-        bucket['distance'] += distance
+        bucket['distance'] += distance_km
         bucket['elevation'] += elevation
         if route.id_User == user_id:
-            my_distance += distance
+            my_distance += distance_km
             my_elevation += elevation
 
     leaderboard = []
@@ -683,21 +687,9 @@ def list_club_workouts(user_id, club_id):
             'has_more': False,
         }), 200
 
-    viewer_friends = friend_ids(user_id)
-    visible_friend_ids = viewer_friends.intersection(member_ids)
-
     routes_query = Route.query.filter(
         Route.id_User.in_(member_ids),
-        or_(
-            Route.privacy == 'everyone',
-            and_(
-                Route.privacy == 'friends',
-                or_(
-                    Route.id_User == user_id,
-                    Route.id_User.in_(visible_friend_ids),
-                ),
-            ),
-        ),
+        Route.privacy == 'everyone',
     ).order_by(Route.creation_date.desc())
 
     total = routes_query.count()

@@ -922,19 +922,19 @@ class WeeklyActivityBarChart extends StatelessWidget {
     return (max < 1.0) ? 1.0 : (max * 1.2).ceilToDouble();
   }
 
-  List<String> _getDayLabels() {
-    final now = DateTime.now();
-    final startDate = now.subtract(const Duration(days: 6));
-    const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-    return List.generate(7, (index) {
-      final date = startDate.add(Duration(days: index));
-      return days[date.weekday - 1];
-    });
+  static DateTime _startOfWeek(DateTime date) {
+    final day = DateTime(date.year, date.month, date.day);
+    return day.subtract(Duration(days: day.weekday - 1));
   }
+
+  static const _dayLabels = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
+  List<String> _getDayLabels() => _dayLabels;
 
   String _formatDateRange() {
     final now = DateTime.now();
-    final start = now.subtract(const Duration(days: 6));
+    final start = _startOfWeek(now);
+    final end = start.add(const Duration(days: 6));
     const months = [
       'янв.',
       'фев.',
@@ -949,7 +949,10 @@ class WeeklyActivityBarChart extends StatelessWidget {
       'нояб.',
       'дек.',
     ];
-    return '${start.day} – ${now.day} ${months[now.month - 1]}';
+    if (start.month == end.month) {
+      return '${start.day} – ${end.day} ${months[end.month - 1]}';
+    }
+    return '${start.day} ${months[start.month - 1]} – ${end.day} ${months[end.month - 1]}';
   }
 
   @override

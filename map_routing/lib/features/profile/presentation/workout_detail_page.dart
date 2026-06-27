@@ -8,6 +8,7 @@ import 'package:map_routing/data/models/track_point.dart';
 import 'package:map_routing/data/models/workout_activity_type.dart';
 import 'package:map_routing/data/models/workout_summary.dart';
 import 'package:map_routing/data/services/gpx_workout_service.dart';
+import 'package:map_routing/data/services/workout_analytics.dart';
 import 'package:map_routing/features/chat/widgets/share_route_to_chats_dialog.dart';
 import 'package:map_routing/features/profile/presentation/edit_workout_page.dart';
 import 'package:map_routing/features/profile/presentation/profile_ui.dart';
@@ -367,7 +368,8 @@ class _PerformanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final chart = workout.chartPoints;
+    final analytics = WorkoutAnalytics.fromWorkout(workout);
+    final chart = analytics.chartPoints;
     if (chart.isEmpty) return const SizedBox.shrink();
 
     final paceSpots = chart
@@ -383,6 +385,8 @@ class _PerformanceCard extends StatelessWidget {
     final maxPace = paceSpots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
     final maxSpeed = speedSpots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
     final maxElev = elevSpots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
+    final minElev = elevSpots.map((s) => s.y).reduce((a, b) => a < b ? a : b);
+    final hasElevationProfile = maxElev - minElev >= 1;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -416,13 +420,16 @@ class _PerformanceCard extends StatelessWidget {
             color: const Color(0xFF00BFA5),
           ),
           const SizedBox(height: 16),
-          Text('Высота (м)', style: profileSubtitleStyle()),
-          const SizedBox(height: 8),
-          _WorkoutLineChart(
-            spots: elevSpots,
-            maxY: maxElev < 1 ? 1 : maxElev * 1.2,
-            color: ProfileColors.orange,
-          ),
+          if (hasElevationProfile) ...[
+            Text('Высота (м)', style: profileSubtitleStyle()),
+            const SizedBox(height: 8),
+            _WorkoutLineChart(
+              spots: elevSpots,
+              minY: minElev > 0 ? minElev * 0.98 : 0,
+              maxY: maxElev < 1 ? 1 : maxElev * 1.02,
+              color: ProfileColors.orange,
+            ),
+          ],
         ],
       ),
     );
@@ -434,20 +441,22 @@ class _WorkoutLineChart extends StatelessWidget {
     required this.spots,
     required this.maxY,
     required this.color,
+    this.minY = 0,
   });
 
   final List<FlSpot> spots;
+  final double minY;
   final double maxY;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
-    final safeMaxY = maxY < 0.1 ? 1.0 : maxY;
+    final safeMaxY = maxY < minY + 0.1 ? minY + 1.0 : maxY;
     return SizedBox(
       height: 120,
       child: LineChart(
         LineChartData(
-          minY: 0,
+          minY: minY,
           maxY: safeMaxY,
           gridData: FlGridData(
             show: true,
